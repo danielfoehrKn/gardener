@@ -16,11 +16,12 @@ package v1alpha1
 
 import (
 	// TODO: Should be k8s.io/component-base/config/v1alpha1 in the future.
+	"time"
+
 	apimachineryconfigv1alpha1 "k8s.io/apimachinery/pkg/apis/config/v1alpha1" // TODO: Should be k8s.io/component-base/config/v1alpha1 in the future.
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	apiserverconfigv1alpha1 "k8s.io/apiserver/pkg/apis/config/v1alpha1"
 	"k8s.io/klog"
-	"time"
 )
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -67,6 +68,9 @@ type ControllerManagerControllerConfiguration struct {
 	// ControllerInstallation defines the configuration of the ControllerInstallation controller.
 	// +optional
 	ControllerInstallation *ControllerInstallationControllerConfiguration `json:"controllerInstallation,omitempty"`
+	// Plant defines the configuration of the Plant controller.
+	// +optional
+	Plant *PlantConfiguration `json:"plant,omitempty"`
 	// SecretBinding defines the configuration of the SecretBinding controller.
 	// +optional
 	SecretBinding *SecretBindingControllerConfiguration `json:"secretBinding,omitempty"`
@@ -113,6 +117,23 @@ type ControllerInstallationControllerConfiguration struct {
 	// ConcurrentSyncs is the number of workers used for the controller to work on
 	// events.
 	ConcurrentSyncs int `json:"concurrentSyncs"`
+}
+
+// PlantConfiguration defines the configuration of the
+// PlantConfiguration controller.
+type PlantConfiguration struct {
+	// ConcurrentSyncs is the number of workers used for the controller to work on
+	// events.
+	ConcurrentSyncs int `json:"concurrentSyncs"`
+	// RetryDuration is the maximum duration how often a reconciliation will be retried
+	// in case of errors.
+	RetryDuration metav1.Duration `json:"retryDuration"`
+	// RetrySyncPeriod is the duration how fast Plants with an erroneous operation are
+	// re-added to the queue so that the operation can be retried. Defaults to 15s.
+	// +optional
+	RetrySyncPeriod *metav1.Duration `json:"retrySyncPeriod,omitempty"`
+	// SyncPeriod is the duration how often the existing resources are reconciled.
+	SyncPeriod metav1.Duration `json:"syncPeriod"`
 }
 
 // SecretBindingControllerConfiguration defines the configuration of the
