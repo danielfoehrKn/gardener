@@ -47,6 +47,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		"github.com/gardener/gardener/pkg/apis/core/v1alpha1.ControllerRegistrationSpec":     schema_pkg_apis_core_v1alpha1_ControllerRegistrationSpec(ref),
 		"github.com/gardener/gardener/pkg/apis/core/v1alpha1.ControllerResource":             schema_pkg_apis_core_v1alpha1_ControllerResource(ref),
 		"github.com/gardener/gardener/pkg/apis/core/v1alpha1.Endpoint":                       schema_pkg_apis_core_v1alpha1_Endpoint(ref),
+		"github.com/gardener/gardener/pkg/apis/core/v1alpha1.Kubernetes":                     schema_pkg_apis_core_v1alpha1_Kubernetes(ref),
 		"github.com/gardener/gardener/pkg/apis/core/v1alpha1.Logging":                        schema_pkg_apis_core_v1alpha1_Logging(ref),
 		"github.com/gardener/gardener/pkg/apis/core/v1alpha1.Monitoring":                     schema_pkg_apis_core_v1alpha1_Monitoring(ref),
 		"github.com/gardener/gardener/pkg/apis/core/v1alpha1.Plant":                          schema_pkg_apis_core_v1alpha1_Plant(ref),
@@ -467,7 +468,7 @@ func schema_pkg_apis_core_v1alpha1_ClusterInfo(ref common.ReferenceCallback) com
 					},
 					"kubernetes": {
 						SchemaProps: spec.SchemaProps{
-							Ref: ref("github.com/gardener/gardener/pkg/apis/garden/v1beta1.Kubernetes"),
+							Ref: ref("github.com/gardener/gardener/pkg/apis/core/v1alpha1.Kubernetes"),
 						},
 					},
 				},
@@ -475,7 +476,7 @@ func schema_pkg_apis_core_v1alpha1_ClusterInfo(ref common.ReferenceCallback) com
 			},
 		},
 		Dependencies: []string{
-			"github.com/gardener/gardener/pkg/apis/core/v1alpha1.Cloud", "github.com/gardener/gardener/pkg/apis/garden/v1beta1.Kubernetes"},
+			"github.com/gardener/gardener/pkg/apis/core/v1alpha1.Cloud", "github.com/gardener/gardener/pkg/apis/core/v1alpha1.Kubernetes"},
 	}
 }
 
@@ -881,13 +882,34 @@ func schema_pkg_apis_core_v1alpha1_Endpoint(ref common.ReferenceCallback) common
 					},
 					"url": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Url is the url of the endpoint",
+							Description: "URL is the url of the endpoint",
 							Type:        []string{"string"},
 							Format:      "",
 						},
 					},
 				},
 				Required: []string{"name", "url"},
+			},
+		},
+		Dependencies: []string{},
+	}
+}
+
+func schema_pkg_apis_core_v1alpha1_Kubernetes(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "Kubernetes contains the version and configuration variables for the Plant cluster.",
+				Properties: map[string]spec.Schema{
+					"Version": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Version is the semantic Kubernetes version to use for the Plant cluster.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"Version"},
 			},
 		},
 		Dependencies: []string{},
@@ -1111,7 +1133,6 @@ func schema_pkg_apis_core_v1alpha1_PlantStatus(ref common.ReferenceCallback) com
 						},
 					},
 				},
-				Required: []string{"clusterInfo"},
 			},
 		},
 		Dependencies: []string{

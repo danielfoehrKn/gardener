@@ -186,7 +186,7 @@ func assignDefaultDomain(shoot *garden.Shoot, projectLister gardenlisters.Projec
 		return
 	}
 
-	project, err := admissionutils.GetShootProject(shoot, projectLister)
+	project, err := admissionutils.GetProject(shoot.Namespace, projectLister)
 	if err != nil {
 		return
 	}
