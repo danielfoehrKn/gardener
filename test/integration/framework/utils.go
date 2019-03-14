@@ -32,6 +32,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	gardencorev1alpha1 "github.com/gardener/gardener/pkg/apis/core/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 )
@@ -182,4 +183,42 @@ func Exists(path string) (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+// plantCreationSuccessful determines, based on the plant condition and Cluster Info, if the Plant was reconciled successfully
+func plantCreationSuccessful(plantStatus *gardencorev1alpha1.PlantStatus) bool {
+	if len(plantStatus.Conditions) == 0 {
+		return false
+	}
+
+	for _, condition := range plantStatus.Conditions {
+		if condition.Status != corev1.ConditionTrue {
+			return false
+		}
+	}
+
+	if len(plantStatus.ClusterInfo.Kubernetes.Version) == 0 || len(plantStatus.ClusterInfo.Cloud.Type) == 0 || len(plantStatus.ClusterInfo.Cloud.Region) == 0 {
+		return false
+	}
+
+	return true
+}
+
+// plantReconciledWithStatusUnknown determines, based on the plant status.condition and status.ClusterInfo, if the PlantStatus is 'unknown'
+func plantReconciledWithStatusUnknown(plantStatus *gardencorev1alpha1.PlantStatus) bool {
+	if len(plantStatus.Conditions) == 0 {
+		return false
+	}
+
+	for _, condition := range plantStatus.Conditions {
+		if condition.Status != corev1.ConditionFalse && condition.Status != corev1.ConditionUnknown {
+			return false
+		}
+	}
+
+	if len(plantStatus.ClusterInfo.Kubernetes.Version) != 0 || len(plantStatus.ClusterInfo.Cloud.Type) != 0 && len(plantStatus.ClusterInfo.Cloud.Region) != 0 {
+		return false
+	}
+
+	return true
 }

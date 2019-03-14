@@ -13,8 +13,8 @@ import (
 
 type defaultPlantControl struct {
 	k8sGardenClient kubernetes.Interface
-	plantClient     client.Client
-	discoveryClient *kubernetesclientset.Clientset
+	plantClient     map[string]client.Client
+	discoveryClient map[string]*kubernetesclientset.Clientset
 	plantLister     gardencorelisters.PlantLister
 	secretsLister   kubecorev1listers.SecretLister
 	recorder        record.EventRecorder

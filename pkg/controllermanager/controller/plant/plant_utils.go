@@ -22,9 +22,6 @@ import (
 
 const (
 	// Following labels come from k8s.io/kubernetes/pkg/kubelet/apis
-
-	// LabelZoneFailureDomain zone failure domain label
-	LabelZoneFailureDomain = "failure-domain.beta.kubernetes.io/zone"
 	// LabelZoneRegion zone region label
 	LabelZoneRegion = "failure-domain.beta.kubernetes.io/region"
 )
@@ -58,6 +55,7 @@ func getClusterInfo(ctx context.Context, cl client.Client, logger logrus.FieldLo
 	}, nil
 }
 
+// updateConditions tries to update the Plant
 func (c *defaultPlantControl) updateConditions(plant *gardencorev1alpha1.Plant, conditions ...gardencorev1alpha1.Condition) (*gardencorev1alpha1.Plant, error) {
 	return kutil.TryUpdatePlantStatusWithEqualFunc(c.k8sGardenClient.GardenCore(), retry.DefaultBackoff, plant.ObjectMeta,
 		func(plant *gardencorev1alpha1.Plant) (*gardencorev1alpha1.Plant, error) {
@@ -69,17 +67,18 @@ func (c *defaultPlantControl) updateConditions(plant *gardencorev1alpha1.Plant, 
 	)
 }
 
-func (c *defaultPlantControl) fetchCloudInfo(ctx context.Context, plant *gardencorev1alpha1.Plant, logger logrus.FieldLogger) (*plantStatusInfo, error) {
-	if c.plantClient == nil || c.discoveryClient == nil {
+// fetchCloudInfo fetches the Cloud Info for the Plant
+func (c *defaultPlantControl) fetchCloudInfo(ctx context.Context, plant *gardencorev1alpha1.Plant, key string, logger logrus.FieldLogger) (*plantStatusInfo, error) {
+	if c.plantClient[key] == nil || c.discoveryClient[key] == nil {
 		return nil, fmt.Errorf("plant clients need to be initialized first")
 	}
 
-	cloudInfo, err := getClusterInfo(ctx, c.plantClient, logger)
+	cloudInfo, err := getClusterInfo(ctx, c.plantClient[key], logger)
 	if err != nil {
 		return nil, err
 	}
 
-	kubernetesVersionInfo, err := c.discoveryClient.ServerVersion()
+	kubernetesVersionInfo, err := c.discoveryClient[key].ServerVersion()
 	if err != nil {
 		return nil, err
 	}
@@ -89,15 +88,16 @@ func (c *defaultPlantControl) fetchCloudInfo(ctx context.Context, plant *gardenc
 	return cloudInfo, nil
 }
 
-func (c *defaultPlantControl) intializeClientsWithUpdateFunc(plant *gardencorev1alpha1.Plant, kubeconfig []byte, needsClientUpdate func() bool) error {
-	if c.discoveryClient == nil || c.plantClient == nil || needsClientUpdate() {
-		fmt.Println("NEEDS CLIENT UPDATE")
-		return c.initializePlantClients(plant, kubeconfig)
+// initializePlantClients initializes a plant and a general k8 client
+func (c *defaultPlantControl) initiatlizeClientsWithUpdateFunc(plant *gardencorev1alpha1.Plant, key string, kubeconfig []byte, needsClientUpdate func() bool) error {
+	if c.discoveryClient[key] == nil || c.plantClient[key] == nil || needsClientUpdate() {
+		return c.initializePlantClients(plant, key, kubeconfig)
 	}
 	return nil
 }
 
-func (c *defaultPlantControl) initializePlantClients(plant *gardencorev1alpha1.Plant, kubeconfigSecretValue []byte) error {
+// initializePlantClients initializes a plant and a general k8 client
+func (c *defaultPlantControl) initializePlantClients(plant *gardencorev1alpha1.Plant, key string, kubeconfigSecretValue []byte) error {
 	config, err := clientcmd.RESTConfigFromKubeConfig(kubeconfigSecretValue)
 	if err != nil {
 		return err
@@ -111,12 +111,13 @@ func (c *defaultPlantControl) initializePlantClients(plant *gardencorev1alpha1.P
 		return err
 	}
 
-	c.plantClient = plantClusterClient
-	c.discoveryClient = discoveryClient
+	c.plantClient[key] = plantClusterClient
+	c.discoveryClient[key] = discoveryClient
 
 	return nil
 }
 
+// getCloudProviderForNode extract the CloudProvider from the providerId of the Node
 func getCloudProviderForNode(providerID string) string {
 
 	provider := strings.Split(providerID, "://")

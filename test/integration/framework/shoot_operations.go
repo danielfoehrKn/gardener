@@ -90,7 +90,7 @@ func (s *ShootGardenerTest) CreateShoot(ctx context.Context) (*v1beta1.Shoot, er
 	return shoot, nil
 }
 
-// DeleteShoot deletes the test shoot
+// DeletePlant deletes the test shoot
 func (s *ShootGardenerTest) DeleteShoot(ctx context.Context) error {
 	shoot, err := s.GetShoot(ctx)
 	if err != nil {

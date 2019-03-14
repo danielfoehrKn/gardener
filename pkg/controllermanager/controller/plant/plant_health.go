@@ -61,10 +61,10 @@ func (c *defaultPlantControl) checkNodes(condition gardencorev1alpha1.Condition,
 }
 
 // checkAPIServerAvailability checks if the API server of a Shoot cluster is reachable and measure the response time.
-func (c *defaultPlantControl) checkAPIServerAvailability(condition gardencorev1alpha1.Condition) gardencorev1alpha1.Condition {
+func (c *defaultPlantControl) checkAPIServerAvailability(key string, condition gardencorev1alpha1.Condition) gardencorev1alpha1.Condition {
 	// Try to reach the Shoot API server and measure the response time.
 	now := time.Now()
-	response := c.discoveryClient.RESTClient().Get().AbsPath("/healthz").Do()
+	response := c.discoveryClient[key].RESTClient().Get().AbsPath("/healthz").Do()
 	responseDurationText := fmt.Sprintf("[response_time:%dms]", time.Now().Sub(now).Nanoseconds()/time.Millisecond.Nanoseconds())
 	if response.Error() != nil {
 		message := fmt.Sprintf("Request to Shoot API server /healthz endpoint failed. %s (%s)", responseDurationText, response.Error().Error())
@@ -91,7 +91,7 @@ func (c *defaultPlantControl) checkAPIServerAvailability(condition gardencorev1a
 	return helper.UpdatedCondition(condition, corev1.ConditionTrue, "HealthzRequestSucceeded", message)
 }
 
-func (c *defaultPlantControl) healthChecks(ctx context.Context, logger logrus.FieldLogger, apiserverAvailability, nodes gardencorev1alpha1.Condition) (gardencorev1alpha1.Condition, gardencorev1alpha1.Condition) {
+func (c *defaultPlantControl) healthChecks(ctx context.Context, key string, logger logrus.FieldLogger, apiserverAvailability, nodes gardencorev1alpha1.Condition) (gardencorev1alpha1.Condition, gardencorev1alpha1.Condition) {
 	var (
 		wg sync.WaitGroup
 	)
@@ -99,11 +99,11 @@ func (c *defaultPlantControl) healthChecks(ctx context.Context, logger logrus.Fi
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		apiserverAvailability = c.checkAPIServerAvailability(apiserverAvailability)
+		apiserverAvailability = c.checkAPIServerAvailability(key, apiserverAvailability)
 	}()
 	go func() {
 		defer wg.Done()
-		newNodes, err := c.CheckPlantClusterNodes(&nodes, c.makePlantNodeLister(ctx, &client.ListOptions{}))
+		newNodes, err := c.CheckPlantClusterNodes(&nodes, c.makePlantNodeLister(ctx, key, &client.ListOptions{}))
 		nodes = newConditionOrError(nodes, *newNodes, err)
 	}()
 
@@ -119,7 +119,7 @@ func newConditionOrError(oldCondition, newCondition gardencorev1alpha1.Condition
 	return newCondition
 }
 
-func (c *defaultPlantControl) makePlantNodeLister(ctx context.Context, options *client.ListOptions) kutil.NodeLister {
+func (c *defaultPlantControl) makePlantNodeLister(ctx context.Context, key string, options *client.ListOptions) kutil.NodeLister {
 	var (
 		once  sync.Once
 		items []*corev1.Node
@@ -127,7 +127,7 @@ func (c *defaultPlantControl) makePlantNodeLister(ctx context.Context, options *
 
 		onceBody = func() {
 			nodeList := &corev1.NodeList{}
-			err = c.plantClient.List(ctx, options, nodeList)
+			err = c.plantClient[key].List(ctx, options, nodeList)
 			if err != nil {
 				return
 			}
