@@ -67,11 +67,11 @@ type ShootGardenerTest struct {
 
 // PlantTest represents an instance of shoot tests which entails all necessary data
 type PlantTest struct {
-	GardenClient kubernetes.Interface
-	Plant        *gardencorev1alpha1.Plant
-	Shoot        *v1beta1.Shoot
-	PlantSecret  *v1.Secret
-	Logger       *logrus.Logger
+	GardenClient                  kubernetes.Interface
+	Plant                         *gardencorev1alpha1.Plant
+	kubeconfigPathExternalCluster string
+	PlantSecret                   *v1.Secret
+	Logger                        *logrus.Logger
 }
 
 // GardenerTestOperation holds all required instances for doing a test operation

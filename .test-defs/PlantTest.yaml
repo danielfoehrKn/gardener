@@ -15,8 +15,7 @@ spec:
       go test $GOPATH/src/github.com/gardener/gardener/test/integration/plants
       -ginkgo.v -ginkgo.progress
       -kubeconfig=$TM_KUBECONFIG_PATH/gardener.config
-      -shootName=$SHOOT_NAME
-      -shootNamespace=$PROJECT_NAMESPACE
+      -kubeconfigExternalCluster=$TM_KUBECONFIG_PATH/shoot.config
       -plantpath=example/100-plant-gcp.yaml
 
   image: eu.gcr.io/gardener-project/gardener/testmachinery/golang:0.28.0

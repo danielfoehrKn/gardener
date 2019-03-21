@@ -84,7 +84,7 @@ func CreatePlantTestArtifacts(plantTestYamlPath string) (*gardencorev1alpha1.Pla
 }
 
 // ReadObject loads the contents of file and decodes it as a
-// ControllerManagerConfiguration object.
+// Plant object.
 func ReadObject(file string, into runtime.Object) error {
 	data, err := ioutil.ReadFile(file)
 	if err != nil {

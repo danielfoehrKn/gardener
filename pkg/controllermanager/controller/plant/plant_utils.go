@@ -106,8 +106,3 @@ func getRegionNameForNode(node corev1.Node) (string, error) {
 	}
 	return "", errors.Errorf("Region name for node %s not found. No label with key %s", node.Name, LabelZoneRegion)
 }
-
-func resetClients(plantControl *defaultPlantControl, key string) {
-	plantControl.plantClient[key] = nil
-	plantControl.discoveryClient[key] = nil
-}

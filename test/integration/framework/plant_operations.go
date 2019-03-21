@@ -17,6 +17,7 @@ package framework
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
 	"time"
 
 	"k8s.io/api/core/v1"
@@ -27,17 +28,21 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	gardencorev1alpha1 "github.com/gardener/gardener/pkg/apis/core/v1alpha1"
-	"github.com/gardener/gardener/pkg/apis/garden/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
+
+	gardencorev1alpha1 "github.com/gardener/gardener/pkg/apis/core/v1alpha1"
 )
 
-// NewPlantTest creates a new shootGardenerTest object, given an already created shoot (created after parsing a shoot YAML)
-func NewPlantTest(kubeconfig string, plant *gardencorev1alpha1.Plant, shoot *v1beta1.Shoot, logger *logrus.Logger) (*PlantTest, error) {
+// NewPlantTest creates a new plantGardenerTest object, given an already created plant (created after parsing a plant YAML) and a path to a kubeconfig of an external cluster
+func NewPlantTest(kubeconfig string, kubeconfigPathExternalCluster string, plant *gardencorev1alpha1.Plant, logger *logrus.Logger) (*PlantTest, error) {
 	if len(kubeconfig) == 0 {
 		return nil, fmt.Errorf("Please specify the kubeconfig path correctly")
+	}
+
+	if len(kubeconfigPathExternalCluster) == 0 {
+		return nil, fmt.Errorf("Please specify the kubeconfig path for the external cluster correctly")
 	}
 
 	k8sGardenClient, err := kubernetes.NewClientFromFile("", kubeconfig, client.Options{
@@ -48,49 +53,35 @@ func NewPlantTest(kubeconfig string, plant *gardencorev1alpha1.Plant, shoot *v1b
 	}
 
 	return &PlantTest{
-		GardenClient: k8sGardenClient,
-		Plant:        plant,
-		Shoot:        shoot,
-		Logger:       logger,
+		GardenClient:                  k8sGardenClient,
+		Plant:                         plant,
+		kubeconfigPathExternalCluster: kubeconfigPathExternalCluster,
+		Logger:                        logger,
 	}, nil
 }
 
 // CreatePlantSecret creates a new Secret for the Plant
 func (s *PlantTest) CreatePlantSecret(ctx context.Context) error {
 
-	if s.Shoot == nil {
-		return fmt.Errorf("Shoot to use as Plant cluster is unavailable ")
+	if len(s.kubeconfigPathExternalCluster) == 0 {
+		return fmt.Errorf("Path to kubeconfig of external cluster not set")
 	}
-	// Retrieve Shoot Secret
-	secret := &v1.Secret{}
 
-	// Name of the shoot secret in the shoot namespace in the garden cluster
-	shootKubeconfigSecretName := s.Shoot.ObjectMeta.Name + ".kubeconfig"
-	err := s.GardenClient.Client().Get(ctx, client.ObjectKey{
-		Namespace: s.Shoot.ObjectMeta.Namespace,
-		Name:      shootKubeconfigSecretName,
-	}, secret)
-
+	kubeconfigExternalCluster, err := ioutil.ReadFile(s.kubeconfigPathExternalCluster);
 	if err != nil {
-		s.Logger.Errorf("Unable to retrieve the secret of the shoot that should be used as a plant secret. Namespace: '%s' , Secret Name: '%s'", s.Shoot.ObjectMeta.Namespace, shootKubeconfigSecretName)
+		s.Logger.Errorf("Unable to read kubeconfig for external cluster from '%s'", s.kubeconfigPathExternalCluster)
 		return err
 	}
 
-	kubeconfig, ok := secret.Data["kubeconfig"]
-	if !ok {
-		s.Logger.Errorf("Shoot secret in namespace: '%s' and name: '%s' that should be used as a plant secret does not contain a valid kubeconfig", s.Shoot.ObjectMeta.Namespace, shootKubeconfigSecretName)
-		return err
-	}
-
-	plantSecretName := "plant-test-" + secret.Name
+	plantSecretName := "test-secret-plant-" + s.Plant.Name
 	plantSecret := v1.Secret{ObjectMeta: metav1.ObjectMeta{Namespace: s.Plant.Namespace, Name: plantSecretName}}
 	plantSecret.Data = make(map[string][]byte)
-	plantSecret.Data["kubeconfig"] = kubeconfig
+	plantSecret.Data["kubeconfig"] = kubeconfigExternalCluster
 
 	err = s.GardenClient.Client().Create(ctx, &plantSecret)
 
 	if err != nil {
-		s.Logger.Errorf("Unable to create the plant secret as a copy of the shoot secret in namespace: '%s' and name: '%s'", s.Shoot.ObjectMeta.Namespace, shootKubeconfigSecretName)
+		s.Logger.Errorf("Unable to create the plant secret %+v: %v", plantSecret, err)
 		return err
 	}
 
@@ -188,11 +179,11 @@ func (s *PlantTest) DeletePlant(ctx context.Context) error {
 		return err
 	}
 
-	s.Logger.Infof("Plant %s was deleted successfully!", s.Shoot.ObjectMeta.Name)
+	s.Logger.Infof("Plant %s was deleted successfully!", s.Plant.ObjectMeta.Name)
 	return nil
 }
 
-// WaitForPlantToBeCreated waits for the shoot to be created
+// WaitForPlantToBeCreated waits for the plant to be created
 func (s *PlantTest) WaitForPlantToBeCreated(ctx context.Context) error {
 	return wait.PollImmediateUntil(2*time.Second, func() (bool, error) {
 		plant := &gardencorev1alpha1.Plant{}
@@ -210,14 +201,14 @@ func (s *PlantTest) WaitForPlantToBeCreated(ctx context.Context) error {
 func (s *PlantTest) WaitForPlantToBeDeleted(ctx context.Context) error {
 	return wait.PollImmediateUntil(2*time.Second, func() (bool, error) {
 		plant := &gardencorev1alpha1.Plant{}
-		err := s.GardenClient.Client().Get(ctx, client.ObjectKey{Namespace: s.Shoot.ObjectMeta.Namespace, Name: s.Shoot.ObjectMeta.Name}, plant)
+		err := s.GardenClient.Client().Get(ctx, client.ObjectKey{Namespace: s.Plant.ObjectMeta.Namespace, Name: s.Plant.ObjectMeta.Name}, plant)
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				return true, nil
 			}
 			return false, err
 		}
-		s.Logger.Infof("Waiting for plant %s to be deleted", s.Shoot.ObjectMeta.Name)
+		s.Logger.Infof("Waiting for plant %s to be deleted", s.Plant.ObjectMeta.Name)
 		return false, nil
 
 	}, ctx.Done())
@@ -225,7 +216,7 @@ func (s *PlantTest) WaitForPlantToBeDeleted(ctx context.Context) error {
 
 // WaitForPlantToBeReconciledSuccessfully waits for the plant to be reconciled with a status indicating success
 func (s *PlantTest) WaitForPlantToBeReconciledSuccessfully(ctx context.Context) error {
-	return wait.PollImmediateUntil(10*time.Second, func() (bool, error) {
+	return wait.PollImmediateUntil(2*time.Second, func() (bool, error) {
 		plant := &gardencorev1alpha1.Plant{}
 		err := s.GardenClient.Client().Get(ctx, client.ObjectKey{Namespace: s.Plant.Namespace, Name: s.Plant.Name}, plant)
 		if err != nil {
@@ -243,7 +234,7 @@ func (s *PlantTest) WaitForPlantToBeReconciledSuccessfully(ctx context.Context) 
 
 // WaitForPlantToBeReconciledWithUnknownStatus waits for the plant to be reconciled, setting the expected status 'unknown'
 func (s *PlantTest) WaitForPlantToBeReconciledWithUnknownStatus(ctx context.Context) error {
-	return wait.PollImmediateUntil(10*time.Second, func() (bool, error) {
+	return wait.PollImmediateUntil(2*time.Second, func() (bool, error) {
 		plant := &gardencorev1alpha1.Plant{}
 		err := s.GardenClient.Client().Get(ctx, client.ObjectKey{Namespace: s.Plant.Namespace, Name: s.Plant.Name}, plant)
 		if err != nil {

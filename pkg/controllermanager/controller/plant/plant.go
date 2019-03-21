@@ -51,6 +51,8 @@ type Controller struct {
 	recorder record.EventRecorder
 
 	secretLister kubecorev1listers.SecretLister
+	secretSynced cache.InformerSynced
+
 	plantControl ControlInterface
 	plantLister  gardencorelisters.PlantLister
 	plantSynced  cache.InformerSynced
@@ -74,7 +76,8 @@ func NewController(k8sGardenClient kubernetes.Interface,
 		plantInformer = gardenCoreInformer.Plants()
 		plantLister   = plantInformer.Lister()
 
-		secretLister = kubeInfomer.Secrets().Lister()
+		secretInformer = kubeInfomer.Secrets()
+		secretLister   = secretInformer.Lister()
 
 		plantQueue = workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "plant")
 	)
@@ -98,6 +101,13 @@ func NewController(k8sGardenClient kubernetes.Interface,
 		AddFunc:    controller.plantAdd,
 		UpdateFunc: controller.plantUpdate,
 		DeleteFunc: controller.plantDelete,
+	})
+
+	controller.secretSynced = secretInformer.Informer().HasSynced
+	secretInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.reconcilePlantForMatchingSecret,
+		UpdateFunc: controller.updatePlantSecret,
+		DeleteFunc: controller.reconcilePlantForMatchingSecret,
 	})
 
 	return controller
