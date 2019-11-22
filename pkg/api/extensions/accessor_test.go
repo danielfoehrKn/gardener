@@ -15,7 +15,7 @@
 package extensions
 
 import (
-	"time"
+	// "time"
 
 	gardencorev1alpha1 "github.com/gardener/gardener/pkg/apis/core/v1alpha1"
 	extensionsinstall "github.com/gardener/gardener/pkg/apis/extensions/install"
@@ -26,6 +26,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"time"
 )
 
 var (
@@ -148,6 +149,44 @@ var _ = Describe("Accessor", func() {
 						)
 
 						Expect(acc.GetType()).To(Equal(t))
+					})
+				})
+				Describe("#Get Conditions", func() {
+					It("should get the conditions", func() {
+						var (
+							conditions = []gardencorev1alpha1.Condition{
+								{
+									Type:    "ABC",
+									Status:  gardencorev1alpha1.ConditionTrue,
+									Reason:  "reason",
+									Message: "message",
+									LastUpdateTime: metav1.NewTime(metav1.Now().Round(time.Second)),
+								},
+							}
+							acc = mkUnstructuredAccessorWithStatus(extensionsv1alpha1.DefaultStatus{Conditions: conditions})
+						)
+						getConditions := acc.GetConditions()
+						Expect(getConditions).To(Equal(conditions))
+					})
+				})
+
+				Describe("#Set Conditions", func() {
+					It("should set the conditions", func() {
+						var (
+							acc        = mkUnstructuredAccessorWithStatus(extensionsv1alpha1.DefaultStatus{})
+							conditions = []gardencorev1alpha1.Condition{
+								{
+									Type:    "ABC",
+									Status:  gardencorev1alpha1.ConditionTrue,
+									Reason:  "reason",
+									Message: "message",
+									LastUpdateTime: metav1.NewTime(metav1.Now().Round(time.Second)),
+								},
+							}
+						)
+						acc.SetConditions(conditions)
+						getConditions := acc.GetConditions()
+						Expect(getConditions).To(Equal(conditions))
 					})
 				})
 			})
