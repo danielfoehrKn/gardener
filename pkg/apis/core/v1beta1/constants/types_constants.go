@@ -270,4 +270,7 @@ const (
 
 	// LabelPodMaintenanceRestart is a constant for a label that describes that a pod should be restarted during maintenance.
 	LabelPodMaintenanceRestart = "maintenance.gardener.cloud/restart"
+
+	// LabelWorkerPool is a constant for a label that indicates the worker pool the node belongs to
+	LabelWorkerPool = "worker.gardener.cloud/pool"
 )

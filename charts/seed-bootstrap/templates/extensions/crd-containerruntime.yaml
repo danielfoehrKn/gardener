@@ -55,7 +55,14 @@ spec:
             binaryPath:
               description: Path to container runtime binaries folder.
               type: string
+            workerGroupSelector:
+              description: workerGroupSelector specifies for which worker groups the ContainerRuntime should be available.
+              type: object
             providerConfig:
               description: ProviderConfig contains provider-specific configuration
                 for this container runtime.
               type: object
+          required:
+          - type
+          - binaryPath
+          - workerGroupSelector

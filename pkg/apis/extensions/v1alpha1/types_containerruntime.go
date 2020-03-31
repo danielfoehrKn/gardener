@@ -66,6 +66,9 @@ type ContainerRuntimeList struct {
 type ContainerRuntimeSpec struct {
 	// BinaryPath is the Worker's machine path where container runtime extensions should copy the binaries to.
 	BinaryPath string `json:"binaryPath"`
+	// WorkerGroupSelector specifies for which worker groups the ContainerRuntime should be available
+	// selects nodes having the labels of the worker group
+	WorkerGroupSelector metav1.LabelSelector `json:"workerGroupSelector"`
 	// DefaultSpec is a structure containing common fields used by all extension resources.
 	DefaultSpec `json:",inline"`
 }

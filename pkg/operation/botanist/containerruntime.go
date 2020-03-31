@@ -29,6 +29,7 @@ import (
 	kutil "github.com/gardener/gardener/pkg/utils/kubernetes"
 	"github.com/gardener/gardener/pkg/utils/kubernetes/health"
 	"github.com/gardener/gardener/pkg/utils/retry"
+	gardencorev1beta1constants "github.com/gardener/gardener/pkg/apis/core/v1beta1/constants"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -38,13 +39,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
-// DeployContainerRuntimeResources creates the `Container runtime` resource in the shoot namespace in the seed
-// cluster. Gardener waits until an external controller did reconcile the resources successfully.
+// DeployContainerRuntimeResources creates a `Container runtime` resource in the shoot namespace in the seed
+// cluster. Deploys one resource per CRI per Worker.
+// Gardener waits until an external controller has reconciled the resources successfully.
 func (b *Botanist) DeployContainerRuntimeResources(ctx context.Context) error {
 	fns := []flow.TaskFn{}
 	requiredContainerRuntimeTypes := sets.NewString()
 	for _, worker := range b.Shoot.Info.Spec.Provider.Workers {
-		if worker.CRI != nil {
+		if worker.CRI != nil && len(worker.CRI.ContainerRuntimes) > 0 {
 			for _, containerRuntime := range worker.CRI.ContainerRuntimes {
 				if !requiredContainerRuntimeTypes.Has(containerRuntime.Type) {
 
@@ -52,9 +54,10 @@ func (b *Botanist) DeployContainerRuntimeResources(ctx context.Context) error {
 
 					var (
 						cr      = containerRuntime
+						workerName      = worker.Name
 						toApply = extensionsv1alpha1.ContainerRuntime{
 							ObjectMeta: metav1.ObjectMeta{
-								Name:      containerRuntime.Type,
+								Name:      fmt.Sprintf("%s-%s", containerRuntime.Type, workerName),
 								Namespace: b.Shoot.SeedNamespace,
 							},
 						}
@@ -68,6 +71,7 @@ func (b *Botanist) DeployContainerRuntimeResources(ctx context.Context) error {
 							if cr.ProviderConfig != nil {
 								toApply.Spec.ProviderConfig = &cr.ProviderConfig.RawExtension
 							}
+							toApply.Spec.WorkerGroupSelector.MatchLabels = map[string]string{gardencorev1beta1constants.LabelWorkerPool: workerName}
 							return nil
 						})
 						return err
