@@ -382,6 +382,56 @@ var _ = Describe("Scheduler_Control", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(bestSeed.Name).To(Equal(newSeedEnvironment3.Name))
 		})
+
+		FIt("should select Seed in the correct CCEE domain", func() {
+			cloudProfileConvergedCloud := cloudProfile
+			cloudProfileConvergedCloud.Name = "converged-cloud"
+			cloudProfileConvergedCloud.Spec.SeedSelector = &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"environment": "ccee",
+				},
+			}
+			Expect(gardenCoreInformerFactory.Core().V1beta1().CloudProfiles().Informer().GetStore().Add(&cloudProfileConvergedCloud)).To(Succeed())
+
+			shoot.Spec.SeedSelector = &metav1.LabelSelector{
+				// schema: ccee-domain/<domain-from-secret> : "true"
+				MatchLabels: map[string]string{
+					"ccee-domain/hcp03": "true",
+				},
+			}
+			shoot.Spec.CloudProfileName = "converged-cloud"
+			// region of the seed that is in the monsoon3 domain (we do not want to schedule there)
+			// the correct seed has region na-us-3
+			shoot.Spec.Region = "eu-nl-1"
+
+			seedDMZ := seedBase
+			seedDMZ.Name = "seedDMZ"
+			seedDMZ.ObjectMeta.Labels = map[string]string{
+				"environment": "ccee",
+				"ccee-domain/bs": "true",
+				"ccee-domain/hcp03": "true",
+				"ccee-domain/cp": "true",
+			}
+			seedDMZ.Spec.Provider.Region = "na-us-3"
+			Expect(gardenCoreInformerFactory.Core().V1beta1().Seeds().Informer().GetStore().Add(&seedDMZ)).To(Succeed())
+
+
+			seedMonsoon3 := seedBase
+			seedMonsoon3.Name = "seedMonsoon3"
+			seedMonsoon3.ObjectMeta.Labels = map[string]string{
+				"environment": "ccee",
+				"ccee-domain/monsoon3": "true",
+			}
+			seedMonsoon3.Spec.Provider.Region = "eu-nl-1"
+			Expect(gardenCoreInformerFactory.Core().V1beta1().Seeds().Informer().GetStore().Add(&seedMonsoon3)).To(Succeed())
+
+
+			bestSeed, err := determineSeed(&shoot, gardenCoreInformerFactory.Core().V1beta1().Seeds().Lister(), gardenCoreInformerFactory.Core().V1beta1().Shoots().Lister(), gardenCoreInformerFactory.Core().V1beta1().CloudProfiles().Lister(), schedulerConfiguration.Schedulers.Shoot.Strategy)
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(bestSeed.Name).To(Equal(seedDMZ.Name))
+			Expect(bestSeed.Spec.Provider.Region).To(Equal("na-us-3"))
+		})
 	})
 
 	Context("SEED DETERMINATION - Shoot does not reference a Seed - find an adequate one using default seed determination strategy", func() {
