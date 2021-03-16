@@ -16,6 +16,7 @@ package pkg
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 
@@ -23,6 +24,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -30,11 +32,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	gardencorev1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1"
-	"github.com/gardener/gardener/pkg/client/kubernetes"
+	"github.com/gardener/gardener/pkg/client/kubernetes/mock"
 	gardenletconfigv1alpha1 "github.com/gardener/gardener/pkg/gardenlet/apis/config/v1alpha1"
 	"github.com/gardener/gardener/pkg/logger"
 	mockclient "github.com/gardener/gardener/pkg/mock/controller-runtime/client"
-	mock "github.com/gardener/gardener/pkg/mock/gardener/client/kubernetes"
 	kutil "github.com/gardener/gardener/pkg/utils/kubernetes"
 	"github.com/gardener/gardener/pkg/utils/retry"
 	retryfake "github.com/gardener/gardener/pkg/utils/retry/fake"
@@ -75,12 +76,13 @@ var _ = Describe("Gardenlet Landscaper deletion testing", func() {
 				gardenClient: mockGardenInterface,
 				seedClient:   mockSeedInterface,
 				log:          logger.NewNopLogger().WithContext(ctx),
-				Imports: &imports.Imports{},
+				imports:      &imports.Imports{},
 				gardenletConfiguration: &gardenletconfigv1alpha1.GardenletConfiguration{
 					SeedConfig: &gardenletconfigv1alpha1.SeedConfig{
 						SeedTemplate: gardencorev1beta1.SeedTemplate{ObjectMeta: seed.ObjectMeta},
 					},
 				},
+				chartPath: chartsRootPath,
 			}
 
 			waiter := &retryfake.Ops{MaxAttempts: 1}
@@ -148,7 +150,7 @@ var _ = Describe("Gardenlet Landscaper deletion testing", func() {
 				Expect(err).To(HaveOccurred())
 			})
 
-			// more test cases for #waitForSeedDeletion below
+			// more test cases for #deleteSeedAndWait below
 			It("fails because it fails to wait for the Seed to be deleted (Seed still exists)", func() {
 				mockGardenInterface.EXPECT().Client().Return(mockGardenClient)
 				mockGardenClient.EXPECT().List(ctx, emptyShootList).DoAndReturn(func(_ context.Context, list *gardencorev1beta1.ShootList, _ ...client.ListOption) error {
@@ -158,7 +160,7 @@ var _ = Describe("Gardenlet Landscaper deletion testing", func() {
 				mockGardenInterface.EXPECT().Client().Return(mockGardenClient)
 				mockGardenClient.EXPECT().Get(ctx, kutil.Key(seed.Namespace, seed.Name), seed).Return(nil)
 
-				// waitForSeedDeletion
+				// deleteSeedAndWait
 				mockGardenInterface.EXPECT().Client().Return(mockGardenClient)
 				mockGardenClient.EXPECT().Delete(ctx, seed).Return(nil)
 				mockGardenInterface.EXPECT().Client().Return(mockGardenClient)
@@ -168,41 +170,88 @@ var _ = Describe("Gardenlet Landscaper deletion testing", func() {
 				Expect(err).To(HaveOccurred())
 			})
 
-			It("should successfully delete the Gardenlet resources from the Seed cluster", func() {
-				mockGardenInterface.EXPECT().Client().Return(mockGardenClient)
-				mockGardenClient.EXPECT().List(ctx, emptyShootList).DoAndReturn(func(_ context.Context, list *gardencorev1beta1.ShootList, _ ...client.ListOption) error {
-					*list = shootListSeedNotInUseByAnyShoot
-					return nil
-				})
-				mockGardenInterface.EXPECT().Client().Return(mockGardenClient)
-				mockGardenClient.EXPECT().Get(ctx, kutil.Key(seed.Namespace, seed.Name), seed).Return(nil)
+			DescribeTable("#Successful deletion",
+				func(
+					imageVectorOverride *string,
+					componentImageVectorOverrides *string,
+					) {
+					mockGardenInterface.EXPECT().Client().Return(mockGardenClient)
+					mockGardenClient.EXPECT().List(ctx, emptyShootList).DoAndReturn(func(_ context.Context, list *gardencorev1beta1.ShootList, _ ...client.ListOption) error {
+						*list = shootListSeedNotInUseByAnyShoot
+						return nil
+					})
+					mockGardenInterface.EXPECT().Client().Return(mockGardenClient)
+					mockGardenClient.EXPECT().Get(ctx, kutil.Key(seed.Namespace, seed.Name), seed).Return(nil)
 
-				// waitForSeedDeletion
-				mockGardenInterface.EXPECT().Client().Return(mockGardenClient)
-				mockGardenClient.EXPECT().Delete(ctx, seed).Return(nil)
-				mockGardenInterface.EXPECT().Client().Return(mockGardenClient)
-				mockGardenClient.EXPECT().Get(ctx, kutil.Key(seed.Namespace, seed.Name), seed).Return(apierrors.NewNotFound(schema.GroupResource{}, seed.Name))
+					// deleteSeedAndWait
+					mockGardenInterface.EXPECT().Client().Return(mockGardenClient)
+					mockGardenClient.EXPECT().Delete(ctx, seed).Return(nil)
+					mockGardenInterface.EXPECT().Client().Return(mockGardenClient)
+					mockGardenClient.EXPECT().Get(ctx, kutil.Key(seed.Namespace, seed.Name), seed).Return(apierrors.NewNotFound(schema.GroupResource{}, seed.Name))
 
-				// chart applier
-				mockSeedInterface.EXPECT().ChartApplier().Return(mockChartApplier)
+					// chart applier
+					mockSeedInterface.EXPECT().ChartApplier().Return(mockChartApplier)
 
-				defer test.WithVars(
-					&GetChartPath, func() string { return chartsRootPath },
-				)()
+					mockChartApplier.EXPECT().Delete(ctx, filepath.Join(chartsRootPath, "gardener", "gardenlet"), "garden", "gardenlet", gomock.Any())
 
-				mockChartApplier.EXPECT().Delete(ctx, filepath.Join(chartsRootPath, "gardener", "gardenlet"), "garden", "gardenlet", kubernetes.Values(map[string]interface{}{}))
+					// expect deletion of the seed secret
+					mockGardenInterface.EXPECT().Client().Return(mockGardenClient)
+					landscaper.gardenletConfiguration.SeedConfig.Spec.SecretRef = &corev1.SecretReference{
+						Name:      "seed-secret",
+						Namespace: "garden",
+					}
 
-				err := landscaper.Delete(ctx)
-				Expect(err).ToNot(HaveOccurred())
-			})
+					seedSecret       := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{
+						Name:      landscaper.gardenletConfiguration.SeedConfig.Spec.SecretRef.Name,
+						Namespace: landscaper.gardenletConfiguration.SeedConfig.Spec.SecretRef.Namespace,
+					}}
+					mockGardenClient.EXPECT().Delete(ctx, seedSecret).Return(nil)
+
+					// expect deletion of the backup secret
+					mockGardenInterface.EXPECT().Client().Return(mockGardenClient)
+					landscaper.gardenletConfiguration.SeedConfig.Spec.Backup = &gardencorev1beta1.SeedBackup{
+						SecretRef:      corev1.SecretReference{
+							Name:      "seed-backup-secret",
+							Namespace: "garden",
+						},
+					}
+					landscaper.imports.SeedBackupCredentials = &json.RawMessage{}
+
+					seedBackupSecret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{
+						Name:      landscaper.gardenletConfiguration.SeedConfig.Spec.Backup.SecretRef.Name,
+						Namespace: landscaper.gardenletConfiguration.SeedConfig.Spec.Backup.SecretRef.Namespace,
+					}}
+					mockGardenClient.EXPECT().Delete(ctx, seedBackupSecret).Return(nil)
+
+					if imageVectorOverride != nil {
+						raw, err := json.Marshal(imageVectorOverride)
+						Expect(err).ToNot(HaveOccurred())
+						imageVectorOverrides := json.RawMessage(raw)
+						landscaper.imports.ImageVectorOverwrite = &imageVectorOverrides
+					}
+
+					if componentImageVectorOverrides != nil {
+						raw, err := json.Marshal(componentImageVectorOverrides)
+						Expect(err).ToNot(HaveOccurred())
+						componentImageVectorOverrides := json.RawMessage(raw)
+						landscaper.imports.ComponentImageVectorOverwrites = &componentImageVectorOverrides
+					}
+
+					err := landscaper.Delete(ctx)
+					Expect(err).ToNot(HaveOccurred())
+				},
+				Entry("should successfully delete the Gardenlet resources from the Seed cluster", nil, nil),
+				Entry("should successfully delete the Gardenlet resources from the Seed cluster - with image vectors", pointer.StringPtr("abc"), pointer.StringPtr("dxy")),
+				)
 		})
 
-		Describe("#waitForSeedDeletion", func() {
+
+		Describe("#deleteSeedAndWait", func() {
 			It("fails to set deletion timestamp on seed", func() {
 				mockGardenInterface.EXPECT().Client().Return(mockGardenClient)
 				mockGardenClient.EXPECT().Delete(ctx, seed).Return(fmt.Errorf("fake error"))
 
-				err := landscaper.waitForSeedDeletion(ctx, seed)
+				err := landscaper.deleteSeedAndWait(ctx, seed)
 				Expect(err).To(HaveOccurred())
 			})
 
@@ -212,7 +261,7 @@ var _ = Describe("Gardenlet Landscaper deletion testing", func() {
 				mockGardenInterface.EXPECT().Client().Return(mockGardenClient)
 				mockGardenClient.EXPECT().Get(ctx, kutil.Key(seed.Namespace, seed.Name), seed).Return(fmt.Errorf("fake error"))
 
-				err := landscaper.waitForSeedDeletion(ctx, seed)
+				err := landscaper.deleteSeedAndWait(ctx, seed)
 				Expect(err).To(HaveOccurred())
 			})
 
@@ -222,7 +271,7 @@ var _ = Describe("Gardenlet Landscaper deletion testing", func() {
 				mockGardenInterface.EXPECT().Client().Return(mockGardenClient)
 				mockGardenClient.EXPECT().Get(ctx, kutil.Key(seed.Namespace, seed.Name), seed).Return(nil)
 
-				err := landscaper.waitForSeedDeletion(ctx, seed)
+				err := landscaper.deleteSeedAndWait(ctx, seed)
 				Expect(err).To(HaveOccurred())
 			})
 
@@ -232,7 +281,7 @@ var _ = Describe("Gardenlet Landscaper deletion testing", func() {
 				mockGardenInterface.EXPECT().Client().Return(mockGardenClient)
 				mockGardenClient.EXPECT().Get(ctx, kutil.Key(seed.Namespace, seed.Name), seed).Return(apierrors.NewNotFound(schema.GroupResource{}, seed.Name))
 
-				err := landscaper.waitForSeedDeletion(ctx, seed)
+				err := landscaper.deleteSeedAndWait(ctx, seed)
 				Expect(err).ToNot(HaveOccurred())
 			})
 		})

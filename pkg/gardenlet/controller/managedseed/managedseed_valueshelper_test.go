@@ -127,7 +127,7 @@ var _ = Describe("ValuesHelper", func() {
 			},
 		}
 
-		vh = newValuesHelper(parentConfig, imageVector)
+		vh = NewValuesHelper(parentConfig, imageVector)
 
 		deployment = &seedmanagementv1alpha1.GardenletDeployment{
 			ReplicaCount:         pointer.Int32Ptr(1),

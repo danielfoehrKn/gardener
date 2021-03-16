@@ -22,6 +22,7 @@ import (
 	"k8s.io/utils/pointer"
 
 	. "github.com/gardener/gardener/landscaper/gardenlet/pkg/apis/imports/v1alpha1"
+	seedmanagementv1alpha1 "github.com/gardener/gardener/pkg/apis/seedmanagement/v1alpha1"
 	configv1alpha1 "github.com/gardener/gardener/pkg/gardenlet/apis/config/v1alpha1"
 
 	. "github.com/onsi/ginkgo"
@@ -66,10 +67,10 @@ var _ = Describe("Defaults", func() {
 		})
 
 		It("should default the GardenletDeployment configuration", func() {
-			config := &GardenletDeploymentConfiguration{}
+			config := &seedmanagementv1alpha1.GardenletDeployment{}
 			SetDefaults_GardenletDeploymentConfiguration(config)
 
-			Expect(config).To(Equal(&GardenletDeploymentConfiguration{
+			Expect(config).To(Equal(&seedmanagementv1alpha1.GardenletDeployment{
 				ReplicaCount:                   pointer.Int32Ptr(1),
 				RevisionHistoryLimit:           pointer.Int32Ptr(1),
 				VPA:           pointer.BoolPtr(false),

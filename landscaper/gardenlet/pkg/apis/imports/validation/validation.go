@@ -17,11 +17,10 @@ package validation
 import (
 	"fmt"
 
-	apivalidation "k8s.io/apimachinery/pkg/api/validation"
-	metav1validation "k8s.io/apimachinery/pkg/apis/meta/v1/validation"
-
 	"github.com/gardener/gardener/landscaper/gardenlet/pkg/apis/imports"
 	gardencore "github.com/gardener/gardener/pkg/apis/core"
+	"github.com/gardener/gardener/pkg/apis/seedmanagement"
+	seedmanagementvalidation "github.com/gardener/gardener/pkg/apis/seedmanagement/validation"
 	gardenletconfig "github.com/gardener/gardener/pkg/gardenlet/apis/config"
 	confighelper "github.com/gardener/gardener/pkg/gardenlet/apis/config/helper"
 	gardenletvalidation "github.com/gardener/gardener/pkg/gardenlet/apis/config/validation"
@@ -29,7 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation/field"
 )
 
-// ValidateLandscaperImports validates a Imports object.
+// ValidateLandscaperImports validates a imports object.
 func ValidateLandscaperImports(imports *imports.Imports) field.ErrorList {
 	allErrs := field.ErrorList{}
 
@@ -56,11 +55,11 @@ func ValidateLandscaperImports(imports *imports.Imports) field.ErrorList {
 
 	allErrs = append(allErrs, validateGardenletConfiguration(gardenletConfig, componentConfigurationPath)...)
 
-	// if only the Seed specifies a backup configuration (componentConfiguration.SeedConfig.Spec.Backup) but not imports.SeedBackup
+	// if only the Seed specifies a backup configuration (componentConfiguration.SeedConfig.Spec.Backup) but not imports.SeedBackupCredentials
 	// then we assume that the reference backup secret already exists in the Garden cluster and does not have to
 	// be deployed by the landscaper. Hence, nothing to validate.
-	if imports.SeedBackup != nil {
-		allErrs = validateBackup(imports.SeedBackup, gardenletConfig.SeedConfig.Spec.Backup, componentConfigurationPath.Child("seedConfig.spec.backup"))
+	if imports.SeedBackupCredentials != nil {
+		allErrs = validateBackup(gardenletConfig.SeedConfig.Spec.Backup, componentConfigurationPath.Child("seedConfig.spec.backup"))
 	}
 
 	return allErrs
@@ -73,14 +72,14 @@ func validateGardenletConfiguration(gardenletConfig *gardenletconfig.GardenletCo
 	allErrs := field.ErrorList{}
 
 	if gardenletConfig.SeedSelector != nil {
-		allErrs = append(allErrs, field.Forbidden(fldPath.Child("seedSelector"), "seed selector is forbidden. Provide a seedConfig instead."))
+		allErrs = append(allErrs, field.Forbidden(fldPath.Child("seedSelector"), "seed selector is forbidden, provide a seedConfig instead."))
 	}
 
 	if gardenletConfig.SeedConfig == nil {
 		return append(allErrs, field.Required(fldPath.Child("seedConfig"), "the seed configuration has to be provided. This is used to automatically register the seed."))
 	}
 
-	allErrs = append(allErrs, gardenletvalidation.ValidateGardenletConfiguration(gardenletConfig, fldPath)...)
+	allErrs = append(allErrs, gardenletvalidation.ValidateGardenletConfiguration(gardenletConfig, fldPath, false)...)
 
 	if gardenletConfig.GardenClientConnection != nil && len(gardenletConfig.GardenClientConnection.Kubeconfig) > 0 {
 		allErrs = append(allErrs, field.Forbidden(fldPath.Child("gardenClientConnection.kubeconfig"), "directly supplying a Garden kubeconfig and therefore not using TLS bootstrapping, is not supported."))
@@ -94,45 +93,32 @@ func validateGardenletConfiguration(gardenletConfig *gardenletconfig.GardenletCo
 }
 
 // validateBackup validates the Seed Backup configuration of the gardenlet landscaper imports
-func validateBackup(seedBackup *imports.SeedBackup, componentConfigSeedBackup *gardencore.SeedBackup, fldPath *field.Path) field.ErrorList {
+func validateBackup(componentConfigSeedBackup *gardencore.SeedBackup, fldPath *field.Path) field.ErrorList {
 	allErrs := field.ErrorList{}
 
 	if componentConfigSeedBackup == nil {
-		return append(allErrs, field.Required(fldPath, "the Seed has to to have backup enabled when the Gardenlet landscaper is configured to deploy a backup secret via \"seedBackup\""))
+		return append(allErrs, field.Required(fldPath, "the Seed has to to have backup enabled when the Gardenlet landscaper is configured to deploy a backup secret via \"seedBackupCredentials\""))
 	}
 
-	if componentConfigSeedBackup.Provider != seedBackup.Provider {
-		allErrs = append(allErrs, field.Required(fldPath.Child("provider"), "seed backup provider must match the Seed Backup provider in \"seedBackup.provider\""))
-	}
-
-	if len(seedBackup.Provider) == 0 {
+	if len(componentConfigSeedBackup.Provider) == 0 {
 		allErrs = append(allErrs, field.Required(fldPath.Child("provider"), "seed backup provider must be defined when configuring backups"))
 	}
-	if seedBackup.Credentials == nil {
-		allErrs = append(allErrs, field.Required(fldPath.Child("credentials"), "seed backup provider credentials must be defined when configuring backups"))
+
+	if len(componentConfigSeedBackup.SecretRef.Name) == 0 {
+		allErrs = append(allErrs, field.Required(fldPath.Child("secretRef.Name"), "seed backup secretRef must be set when configuring backups"))
 	}
 
 	return allErrs
 }
 
 // validateGardenletDeployment validates the deployment configuration of the landscaper gardenlet imports
-func validateGardenletDeployment(deployment *imports.GardenletDeploymentConfiguration, fldPath *field.Path) field.ErrorList {
+func validateGardenletDeployment(deployment *seedmanagement.GardenletDeployment, fldPath *field.Path) field.ErrorList {
 	allErrs := field.ErrorList{}
 
-	if deployment.ReplicaCount != nil {
-		allErrs = append(allErrs, apivalidation.ValidateNonnegativeField(int64(*deployment.ReplicaCount), fldPath.Child("replicaCount"))...)
-	}
-	if deployment.RevisionHistoryLimit != nil {
-		allErrs = append(allErrs, apivalidation.ValidateNonnegativeField(int64(*deployment.RevisionHistoryLimit), fldPath.Child("revisionHistoryLimit"))...)
-	}
-	if deployment.ServiceAccountName != nil {
-		for _, msg := range apivalidation.ValidateServiceAccountName(*deployment.ServiceAccountName, false) {
-			allErrs = append(allErrs, field.Invalid(fldPath.Child("serviceAccountName"), *deployment.ServiceAccountName, msg))
-		}
+	if deployment.Image != nil {
+		allErrs = append(allErrs, field.Forbidden(fldPath.Child("image"), "directly setting the image field is not supported, instead set the image via the component descriptor"))
 	}
 
-	allErrs = append(allErrs, metav1validation.ValidateLabels(deployment.PodLabels, fldPath.Child("podLabels"))...)
-	allErrs = append(allErrs, apivalidation.ValidateAnnotations(deployment.PodAnnotations, fldPath.Child("podAnnotations"))...)
-
+	allErrs = append(allErrs, seedmanagementvalidation.ValidateGardenletDeployment(deployment, fldPath)...)
 	return allErrs
 }

@@ -24,4 +24,4 @@ COMPONENT_DESCRIPTOR_PATH=dev/landscaper/gardenlet-landscaper-component-descript
     go run \
       -mod=vendor \
       -ldflags "$(./hack/get-build-ld-flags.sh)" \
-      "$(dirname $0)"/../../landscaper/gardenlet/landscaper-gardenlet/main.go
+      "$(dirname $0)"/../../landscaper/cmd/landscaper-gardenlet/main.go

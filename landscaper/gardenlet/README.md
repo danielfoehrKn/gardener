@@ -9,27 +9,47 @@ Essentially follows this [documentation](../../docs/deployment/deploy_gardenlet_
 
 ## Prerequisites
 
-The Kubernetes cluster to be registered as a Seed must have [Vertical Pod Autoscaling](https://github.com/kubernetes/autoscaler/tree/master/vertical-pod-autoscaler) enabled
-**if VPA for the Gardenlet is enabled** (via  field `.deploymentConfiguration.vpa` in the [import configuration](#import-configuration). 
-The landscaper only deployes the `VerticalPodAutoscaler` resource.
+The gardenlet landscaper deploys a `VerticalPodAutoscaler` resource
+**if VPA for the Gardenlet is enabled** (via  field `.deploymentConfiguration.vpa` in the [import configuration](#import-configuration).
+Hence, in this case the Kubernetes cluster to be registered as a Seed must have 
+[Vertical Pod Autoscaling](https://github.com/kubernetes/autoscaler/tree/master/vertical-pod-autoscaler) enabled 
+(requires at least the CRD `VerticalPodAutoscaler` to be registered)
 
 ## Run
 
-The Gardenlet landscaper component is supposed to run as part of the [Gardener Landscaper](https://github.com/gardener/landscaper) but can also be executed stand-alone.
+The Gardenlet landscaper component is supposed to run as part of the [Gardener Landscaper](https://github.com/gardener/landscaper) 
+but can also be executed stand-alone.
 
-The Gardenlet landscaper does not support command line arguments.
-However, make sure to set the following environment variables:
+The Gardenlet landscaper only supports one command line argument 
+ - `--integration-test true/false` (defaults to `false`).
+   
+   In integration tests, we do not assume that the Gardenlet can be rolled out successfully,
+   nor that the Seed can be registered.
+   This is to provide an easy means of testing the landscaper component without requiring
+   a fully functional Gardener control plane.
+
+
+Make sure to set the following environment variables:
 - `IMPORTS_PATH` contains the path to a file containing [required import configuration](#required-configuration).
 - `OPERATION` is set to either `RECONCILE` (deploys the Gardenlet) or `DELETE` to remove the deployed resources.
 - `COMPONENT_DESCRIPTOR_PATH` contains the path to a file containing a component descriptor for the Gardenlet. 
    This file contains the OCI image reference to use for the Gardenlet deployment.
-   You can find a sample descriptor [here](example/local/component_descriptor_list.yaml).
-   
-The Gardenlet landscaper can be run locally by executing the below `make` statement.
-The file path to a valid landscaper import configuration file has to be provided as the first argument.
-The [example file](examplemports.yaml) can be used as a template.
+   You can find a sample descriptor [here](example/run-locally/gardenlet-landscaper-component-descriptor-list.yaml).
+  
+
+### Run locally
+
+1. Run `make dev-setup` to create a default component descriptor and import file for local execution 
+in the directory `dev/landscaper`.
+
+2. Adjust the import file `landscaper/gardenlet-landscaper-imports.yaml` to your setup.
+Please check what can be configured [below](#import-configuration).
+
+3. Finally, run the below `make` statement to run the Gardenlet landscaper. 
+   This already sets the required environment variables and the path to the local imports and component descriptor file.
 
 Run the landscaper gardenlet `RECONCILE` operation:
+
 ```
 make start-landscaper-gardenlet-reconcile
 ```
@@ -92,12 +112,10 @@ You can either
  a) refer to an existing secret in the Garden cluster containing backup credentials using the import configuration field `componentConfiguration.seedConfig.backup`
  b) or use the landscaper component to deploy a secret containing the backup credentials.
 
-For option b), you need to provide the backup provider and credentials in
-the import configuration field `seedBackup`.
-Additionally, the field `componentConfiguration.seedConfig.spec.backup` needs to be provided
-specifying the matching backup provider and secret reference.
+For option b), you need to provide the backup provider credentials in
+the import configuration field `seedBackupCredentials`.
 The Gardenlet landscaper takes care of creating a Kubernetes secret with the name and namespace given in `componentConfiguration.seedConfig.backup.secretRef`
-in the Garden cluster containing the credentials given in `seedBackup`.
+in the Garden cluster containing the credentials given in `seedBackupCredentials`.
 
 ### Additional Considerations
 

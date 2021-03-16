@@ -14,126 +14,65 @@
 
 package pkg
 
-func (g Landscaper) computeGardenletChartValues(bootstrapKubeconfig []byte) map[string]interface{} {
-	gardenClientConnection := map[string]interface{}{
-		"acceptContentTypes": g.gardenletConfiguration.GardenClientConnection.AcceptContentTypes,
-		"contentType":        g.gardenletConfiguration.GardenClientConnection.ContentType,
-		"qps":                g.gardenletConfiguration.GardenClientConnection.QPS,
-		"burst":              g.gardenletConfiguration.GardenClientConnection.Burst,
-		// always set in defaults
-		"kubeconfigSecret":   *g.gardenletConfiguration.GardenClientConnection.KubeconfigSecret,
+import (
+	"encoding/json"
+	"fmt"
+
+	seedmanagementv1alpha1 "github.com/gardener/gardener/pkg/apis/seedmanagement/v1alpha1"
+	"github.com/gardener/gardener/pkg/gardenlet/controller/managedseed"
+	"github.com/gardener/gardener/pkg/utils"
+)
+
+func (g Landscaper) computeGardenletChartValues(bootstrapKubeconfig []byte) (map[string]interface{}, error) {
+	// do not set the garden bootstrap secret to the chart when the actual bootstrap kubeconfig is nil
+	// otherwise this will lead to a chart render error
+	if bootstrapKubeconfig == nil && g.gardenletConfiguration.GardenClientConnection != nil {
+		g.gardenletConfiguration.GardenClientConnection.BootstrapKubeconfig = nil
 	}
 
-	// setting a bootstrap secret is only required during the first deployment
-	// after, the automatic cert rotation of the Gardenlet uses the existing client certificate
-	// to rotate the credentials
-	if len(bootstrapKubeconfig) > 0 {
-		gardenClientConnection["bootstrapKubeconfig"] = map[string]interface{}{
-			"name":       g.gardenletConfiguration.GardenClientConnection.BootstrapKubeconfig.Name,
-			"namespace":  g.gardenletConfiguration.GardenClientConnection.BootstrapKubeconfig.Namespace,
-			"kubeconfig": string(bootstrapKubeconfig),
+	// do not set any parent Gardenlet configuration as the landscaper
+	// does not have a parent Gardenlet
+	valuesHelper := managedseed.NewValuesHelper(nil, nil)
+
+	// need to use the external version to reuse the values generation of the managed seed
+	deploymentV1alpha1 := &seedmanagementv1alpha1.GardenletDeployment{}
+
+	if g.imports.DeploymentConfiguration != nil {
+		if err := seedmanagementv1alpha1.Convert_seedmanagement_GardenletDeployment_To_v1alpha1_GardenletDeployment(g.imports.DeploymentConfiguration, deploymentV1alpha1, nil); err != nil {
+			return nil, fmt.Errorf("failed to convert GardenletDeployment configuration to internal version for validation: %w", err)
 		}
 	}
 
-	if g.gardenletConfiguration.GardenClientConnection.GardenClusterAddress != nil {
-		gardenClientConnection["gardenClusterAddress"] = *g.gardenletConfiguration.GardenClientConnection.GardenClusterAddress
+	values, err :=  valuesHelper.GetGardenletChartValues(deploymentV1alpha1, g.gardenletConfiguration, string(bootstrapKubeconfig))
+	if err != nil {
+		return nil, err
 	}
 
-	configValues := map[string]interface{}{
-		"gardenClientConnection": gardenClientConnection,
-		"featureGates":           g.gardenletConfiguration.FeatureGates,
-		"server":                 *g.gardenletConfiguration.Server,
-		"seedConfig":             *g.gardenletConfiguration.SeedConfig,
+	if g.imports.ImageVectorOverwrite != nil || g.imports.ComponentImageVectorOverwrites != nil {
+		values, err = setImageVectorOverrides(values, g.imports.ImageVectorOverwrite, g.imports.ComponentImageVectorOverwrites)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	if g.gardenletConfiguration.ShootClientConnection != nil {
-		configValues["shootClientConnection"] = *g.gardenletConfiguration.ShootClientConnection
+	return values, err
+}
+
+// setImageVectorOverrides sets image vector overrides in the values map
+func setImageVectorOverrides(values map[string]interface{}, imageVectorOverwrite, componentImageVectorOverwrites *json.RawMessage) (map[string]interface{}, error) {
+	gardenletValues, err := utils.GetFromValuesMap(values, "global", "gardenlet")
+	if err != nil {
+		return nil, err
 	}
 
-	if g.gardenletConfiguration.SeedClientConnection != nil {
-		configValues["seedClientConnection"] = *g.gardenletConfiguration.SeedClientConnection
+	// Set image vector
+	if imageVectorOverwrite != nil {
+		gardenletValues.(map[string]interface{})["imageVectorOverwrite"] = string(*imageVectorOverwrite)
 	}
 
-	if g.gardenletConfiguration.Controllers != nil {
-		configValues["controllers"] = *g.gardenletConfiguration.Controllers
+	if componentImageVectorOverwrites != nil {
+		gardenletValues.(map[string]interface{})["componentImageVectorOverwrites"] = string(*componentImageVectorOverwrites)
 	}
 
-	if g.gardenletConfiguration.LeaderElection != nil {
-		configValues["leaderElection"] = *g.gardenletConfiguration.LeaderElection
-	}
-
-	if g.gardenletConfiguration.LogLevel != nil {
-		configValues["logLevel"] = *g.gardenletConfiguration.LogLevel
-	}
-
-	if g.gardenletConfiguration.KubernetesLogLevel != nil {
-		configValues["kubernetesLogLevel"] = *g.gardenletConfiguration.KubernetesLogLevel
-	}
-
-	if g.gardenletConfiguration.Logging != nil {
-		configValues["logging"] = *g.gardenletConfiguration.Logging
-	}
-
-	gardenletValues := map[string]interface{}{
-		"image": map[string]interface{}{
-			"repository": g.gardenletImageRepository,
-			"tag":        g.gardenletImageTag,
-		},
-		"config": configValues,
-	}
-
-	// Set deployment values
-	if g.Imports.DeploymentConfiguration.ReplicaCount != nil {
-		gardenletValues["replicaCount"] = *g.Imports.DeploymentConfiguration.ReplicaCount
-	}
-
-	if g.Imports.DeploymentConfiguration.ServiceAccountName != nil {
-		gardenletValues["serviceAccountName"] = *g.Imports.DeploymentConfiguration.ServiceAccountName
-	}
-
-	if g.Imports.DeploymentConfiguration.RevisionHistoryLimit != nil {
-		gardenletValues["revisionHistoryLimit"] = *g.Imports.DeploymentConfiguration.RevisionHistoryLimit
-	}
-
-	if g.Imports.DeploymentConfiguration.ImageVectorOverwrite != nil {
-		gardenletValues["imageVectorOverwrite"] = *g.Imports.DeploymentConfiguration.ImageVectorOverwrite
-	}
-
-	if g.Imports.DeploymentConfiguration.ComponentImageVectorOverwrites != nil {
-		gardenletValues["componentImageVectorOverwrites"] = *g.Imports.DeploymentConfiguration.ComponentImageVectorOverwrites
-	}
-
-	if g.Imports.DeploymentConfiguration.Resources != nil {
-		gardenletValues["resources"] = *g.Imports.DeploymentConfiguration.Resources
-	}
-
-	if g.Imports.DeploymentConfiguration.PodLabels != nil {
-		gardenletValues["podLabels"] = g.Imports.DeploymentConfiguration.PodLabels
-	}
-
-	if g.Imports.DeploymentConfiguration.PodAnnotations != nil {
-		gardenletValues["podAnnotations"] = g.Imports.DeploymentConfiguration.PodAnnotations
-	}
-
-	if g.Imports.DeploymentConfiguration.AdditionalVolumeMounts != nil {
-		gardenletValues["additionalVolumeMounts"] = g.Imports.DeploymentConfiguration.AdditionalVolumeMounts
-	}
-
-	if g.Imports.DeploymentConfiguration.AdditionalVolumes != nil {
-		gardenletValues["additionalVolumes"] = g.Imports.DeploymentConfiguration.AdditionalVolumes
-	}
-
-	if g.Imports.DeploymentConfiguration.Env != nil {
-		gardenletValues["env"] = g.Imports.DeploymentConfiguration.Env
-	}
-
-	if g.Imports.DeploymentConfiguration.VPA != nil {
-		gardenletValues["vpa"] = *g.Imports.DeploymentConfiguration.VPA
-	}
-
-	return map[string]interface{}{
-		"global": map[string]interface{}{
-			"gardenlet": gardenletValues,
-		},
-	}
+	return utils.SetToValuesMap(values, gardenletValues, "global", "gardenlet")
 }

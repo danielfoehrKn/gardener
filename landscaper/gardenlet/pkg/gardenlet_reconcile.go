@@ -31,7 +31,6 @@ import (
 	v1beta1constants "github.com/gardener/gardener/pkg/apis/core/v1beta1/constants"
 	"github.com/gardener/gardener/pkg/client/kubernetes"
 	bootstraputil "github.com/gardener/gardener/pkg/gardenlet/bootstrap/util"
-	"github.com/gardener/gardener/pkg/operation/common"
 	"github.com/gardener/gardener/pkg/utils"
 	kutil "github.com/gardener/gardener/pkg/utils/kubernetes"
 	"github.com/gardener/gardener/pkg/utils/kubernetes/health"
@@ -40,10 +39,6 @@ import (
 	"github.com/gardener/gardener/landscaper/gardenlet/pkg/applier"
 )
 
-// GetChartPath gets the path to the chart directory
-// exposed for testing
-var GetChartPath = func() string { return common.ChartPath }
-
 // Reconcile deploys the Gardenlet into the Seed cluster
 func (g *Landscaper) Reconcile(ctx context.Context) error {
 	seedConfig := g.gardenletConfiguration.SeedConfig
@@ -51,20 +46,20 @@ func (g *Landscaper) Reconcile(ctx context.Context) error {
 	// deploy the Seed secret containing the Seed cluster kubeconfig to the Garden cluster
 	// only deployed if secret reference is explicitly configured in the Seed resource in the import configuration
 	if g.gardenletConfiguration.SeedConfig.Spec.SecretRef != nil {
-		seedKubeconfig := g.Imports.SeedCluster.Spec.Configuration.RawMessage
+		seedKubeconfig := g.imports.SeedCluster.Spec.Configuration.RawMessage
 		if g.gardenletConfiguration.SeedClientConnection != nil && len(g.gardenletConfiguration.SeedClientConnection.Kubeconfig) > 0 {
 			seedKubeconfig = []byte(g.gardenletConfiguration.SeedClientConnection.Kubeconfig)
 		}
 
 		if err := g.deploySeedSecret(ctx, seedKubeconfig, g.gardenletConfiguration.SeedConfig.Spec.SecretRef); err != nil {
-			return fmt.Errorf("failed to deploy secret for the Seed resource containing the Seed cluster's kubeconfig: %v", err)
+			return fmt.Errorf("failed to deploy secret for the Seed resource containing the Seed cluster's kubeconfig: %w", err)
 		}
 	}
 
 	// if configured, deploy the seed-backup secret to the Garden cluster
-	if g.Imports.SeedBackup != nil && seedConfig.Spec.Backup != nil {
+	if g.imports.SeedBackupCredentials != nil && seedConfig.Spec.Backup != nil {
 		credentials := make(map[string][]byte)
-		marshalJSON, err := g.Imports.SeedBackup.Credentials.MarshalJSON()
+		marshalJSON, err := g.imports.SeedBackupCredentials.MarshalJSON()
 		if err != nil {
 			return err
 		}
@@ -73,8 +68,8 @@ func (g *Landscaper) Reconcile(ctx context.Context) error {
 			return err
 		}
 
-		if err := g.deployBackupSecret(ctx, g.Imports.SeedBackup.Provider, credentials, seedConfig.Spec.Backup.SecretRef); err != nil {
-			return fmt.Errorf("failed to deploy the Seed backup secret to the Garden cluster: %v", err)
+		if err := g.deployBackupSecret(ctx, seedConfig.Spec.Backup.Provider, credentials, seedConfig.Spec.Backup.SecretRef); err != nil {
+			return fmt.Errorf("failed to deploy the Seed backup secret to the Garden cluster: %w", err)
 		}
 	}
 
@@ -86,14 +81,14 @@ func (g *Landscaper) Reconcile(ctx context.Context) error {
 	// this should not be a problem, as the landscaper always uses bootstrap secrets with a limited lifetime.
 	isAlreadyBootstrapped, err := g.isSeedBootstrapped(ctx, seedConfig.ObjectMeta)
 	if err != nil {
-		return fmt.Errorf("failed to check if seed %q is already bootstrapped: %v", seedConfig.ObjectMeta.Name, err)
+		return fmt.Errorf("failed to check if seed %q is already bootstrapped: %w", seedConfig.ObjectMeta.Name, err)
 	}
 
 	var bootstrapKubeconfig []byte
 	if !isAlreadyBootstrapped {
 		bootstrapKubeconfig, err = g.getKubeconfigWithBootstrapToken(ctx, seedConfig.ObjectMeta.Name)
 		if err != nil {
-			return fmt.Errorf("failed to compute the bootstrap kubeconfig: %v", err)
+			return fmt.Errorf("failed to compute the bootstrap kubeconfig: %w", err)
 		}
 	}
 
@@ -102,11 +97,14 @@ func (g *Landscaper) Reconcile(ctx context.Context) error {
 		return err
 	}
 
-	values := g.computeGardenletChartValues(bootstrapKubeconfig)
+	values, err := g.computeGardenletChartValues(bootstrapKubeconfig)
+	if err != nil {
+		return fmt.Errorf("failed to compute gardenlet chart values: %w", err)
+	}
 
-	applier := applier.NewGardenletChartApplier(g.seedClient.ChartApplier(), values, GetChartPath())
+	applier := applier.NewGardenletChartApplier(g.seedClient.ChartApplier(), values, g.chartPath)
 	if err := applier.Deploy(ctx); err != nil {
-		return fmt.Errorf("failed deploying Gardenlet chart to the Seed cluster: %v", err)
+		return fmt.Errorf("failed deploying Gardenlet chart to the Seed cluster: %w", err)
 	}
 
 	g.log.Infof("Successfully deployed Gardenlet resources for Seed %q", g.gardenletConfiguration.SeedConfig.Name)
@@ -114,18 +112,13 @@ func (g *Landscaper) Reconcile(ctx context.Context) error {
 	return g.waitForRolloutToBeComplete(ctx)
 }
 
-// Sleep returns the time the process should sleep to give the gardenlet process
-// time to startup and either fail or proceed
-// exposed for testing
-var Sleep = func() time.Duration { return 10 * time.Second }
-
 func (g *Landscaper) waitForRolloutToBeComplete(ctx context.Context) error {
 	g.log.Info("Waiting for the Gardenlet to be rolled out successfully...")
 
 	// sleep for couple seconds to give the gardenlet process time to startup and either fail or proceed
 	// otherwise the Seed might be observed as READY, only because the deployed Gardenlet
 	// has not reconciled it yet
-	time.Sleep(Sleep())
+	time.Sleep(g.rolloutSleepDuration)
 
 	var (
 		deploymentRolloutSuccessful bool
@@ -188,7 +181,7 @@ func (g *Landscaper) waitForRolloutToBeComplete(ctx context.Context) error {
 		// Check Seed without caring for the observing Gardener version (unknown to the landscaper)
 		err = health.CheckSeed(seed, seed.Status.Gardener)
 		if err != nil {
-			msg := fmt.Sprintf("seed %q is not yet ready...: %v", seed.Name, err)
+			msg := fmt.Sprintf("Seed %q is not yet ready...: %v", seed.Name, err)
 			g.log.Info(msg)
 			return retry.MinorError(fmt.Errorf(msg))
 		}

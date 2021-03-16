@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"time"
 
 	v2 "github.com/gardener/component-spec/bindings-go/apis/v2"
 	"github.com/gardener/component-spec/bindings-go/apis/v2/cdutils"
@@ -28,12 +29,13 @@ import (
 	"github.com/sirupsen/logrus"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/gardener/gardener/charts"
+	"github.com/gardener/gardener/landscaper/gardenlet/pkg/apis/imports"
+	"github.com/gardener/gardener/pkg/apis/seedmanagement"
 	"github.com/gardener/gardener/pkg/client/kubernetes"
 	confighelper "github.com/gardener/gardener/pkg/gardenlet/apis/config/helper"
 	configv1alpha1 "github.com/gardener/gardener/pkg/gardenlet/apis/config/v1alpha1"
 	"github.com/gardener/gardener/pkg/logger"
-
-	"github.com/gardener/gardener/landscaper/gardenlet/pkg/apis/imports"
 )
 
 const (
@@ -47,15 +49,17 @@ type Landscaper struct {
 	gardenClient             kubernetes.Interface
 	seedClient               kubernetes.Interface
 	// using internal version of the import configuration
-	Imports                  *imports.Imports
+	imports *imports.Imports
 	// working on the external version of the GardenletConfiguration file
 	gardenletConfiguration   *configv1alpha1.GardenletConfiguration
 	landscaperOperation      string
-	gardenletImageRepository string
-	gardenletImageTag        string
 
+	chartPath 				 string
 	// disables certain checks that require Gardener API groups in the Garden cluster
-	isIntegrationTest bool
+	isIntegrationTest 		 bool
+	// the time the process should sleep to give the gardenlet process
+	// time to startup and either fail or proceed
+	rolloutSleepDuration 	 time.Duration
 }
 
 // NewGardenletLandscaper creates a new Gardenlet landscaper.
@@ -68,7 +72,7 @@ func NewGardenletLandscaper(imports *imports.Imports, landscaperOperation, compo
 
 	gardenTargetConfig := &landscaperv1alpha1.KubernetesClusterTargetConfig{}
 	if err := json.Unmarshal(imports.GardenCluster.Spec.Configuration.RawMessage, gardenTargetConfig); err != nil {
-		return nil, fmt.Errorf("failed to parse the Garden cluster kubeconfig : %v", err)
+		return nil, fmt.Errorf("failed to parse the Garden cluster kubeconfig : %w", err)
 	}
 
 	// Create Garden client
@@ -77,53 +81,58 @@ func NewGardenletLandscaper(imports *imports.Imports, landscaperOperation, compo
 			Scheme: kubernetes.GardenScheme,
 		}))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create the Garden cluster client: %v", err)
+		return nil, fmt.Errorf("failed to create the Garden cluster client: %w", err)
 	}
 
 	seedClusterTargetConfig := &landscaperv1alpha1.KubernetesClusterTargetConfig{}
 	if err := json.Unmarshal(imports.SeedCluster.Spec.Configuration.RawMessage, seedClusterTargetConfig); err != nil {
-		return nil, fmt.Errorf("failed to parse the Runtime cluster kubeconfig : %v", err)
+		return nil, fmt.Errorf("failed to parse the Runtime cluster kubeconfig: %w", err)
 	}
 
 	// Create Seed client
 	seedClient, err := kubernetes.NewClientFromBytes([]byte(seedClusterTargetConfig.Kubeconfig))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create the runtime cluster client: %v", err)
+		return nil, fmt.Errorf("failed to create the seed cluster client: %w", err)
 	}
 
 	landscaper := Landscaper{
 		log:                    logger.NewFieldLogger(logger.NewLogger("info"), "landscaper-gardenlet operation", landscaperOperation),
-		Imports:                imports,
+		imports:                imports,
 		gardenletConfiguration: gardenletConfig,
 		landscaperOperation:    landscaperOperation,
 		seedClient:             seedClient,
 		gardenClient:           gardenClient,
-		isIntegrationTest: 		isIntegrationTest,
+		isIntegrationTest:      isIntegrationTest,
+		chartPath:              charts.Path,
+		rolloutSleepDuration:   10 * time.Second,
 	}
 
 	componentDescriptorData, err := ioutil.ReadFile(componentDescriptorPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse the Gardenlet component descriptor: %v", err)
+		return nil, fmt.Errorf("failed to parse the Gardenlet component descriptor: %w", err)
 	}
 
 	componentDescriptorList := &v2.ComponentDescriptorList{}
 	err = codec.Decode(componentDescriptorData, componentDescriptorList)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse the Gardenlet component descriptor: %v", err)
+		return nil, fmt.Errorf("failed to parse the Gardenlet component descriptor: %w", err)
 	}
 
 	imageReference, err := cdutils.GetImageReferenceFromList(componentDescriptorList, gardenerComponentName, gardenletImageName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse the component descriptor: %v", err)
+		return nil, fmt.Errorf("failed to parse the component descriptor: %w", err)
 	}
 
-	repo, tag, err := cdutils.GetRepositoryAndTagFromReference(imageReference)
+	repo, tag, _, err := cdutils.ParseImageReference(imageReference)
 	if err != nil {
 		return nil, err
 	}
 
-	landscaper.gardenletImageRepository = repo
-	landscaper.gardenletImageTag = tag
+	// can safely dereference DeploymentConfiguration as it is defaulted
+	landscaper.imports.DeploymentConfiguration.Image = &seedmanagement.Image{
+		Repository: &repo,
+		Tag: &tag,
+	}
 
 	return &landscaper, nil
 }

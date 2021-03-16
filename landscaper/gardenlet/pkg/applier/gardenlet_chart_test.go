@@ -35,20 +35,21 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/version"
+	autoscalingv1beta2 "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1beta2"
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	importsv1alpha1 "github.com/gardener/gardener/landscaper/gardenlet/pkg/apis/imports/v1alpha1"
 	"github.com/gardener/gardener/landscaper/gardenlet/pkg/applier"
 	appliercommon "github.com/gardener/gardener/landscaper/gardenlet/pkg/applier/test_common"
 	gardencorev1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1"
 	gardencorev1beta1constants "github.com/gardener/gardener/pkg/apis/core/v1beta1/constants"
+	"github.com/gardener/gardener/pkg/apis/seedmanagement"
 	cr "github.com/gardener/gardener/pkg/chartrenderer"
 	"github.com/gardener/gardener/pkg/client/kubernetes"
 	gardenletconfig "github.com/gardener/gardener/pkg/gardenlet/apis/config"
 	gardenletconfigv1alpha1 "github.com/gardener/gardener/pkg/gardenlet/apis/config/v1alpha1"
-	mock "github.com/gardener/gardener/pkg/mock/gardener/client/kubernetes"
+	"github.com/gardener/gardener/pkg/client/kubernetes/mock"
 	"github.com/gardener/gardener/pkg/operation/botanist/component"
 	kutil "github.com/gardener/gardener/pkg/utils/kubernetes"
 )
@@ -89,6 +90,9 @@ var _ = Describe("#Gardenlet Chart Test", func() {
 		Expect(rbacv1.AddToScheme(s)).NotTo(HaveOccurred())
 		// for deletion of PDB
 		Expect(policyv1beta1.AddToScheme(s)).NotTo(HaveOccurred())
+		// for vpa
+		Expect(autoscalingv1beta2.AddToScheme(s)).NotTo(HaveOccurred())
+
 
 		// create decoder for unmarshalling the GardenletConfiguration from the component gardenletconfig Config Map
 		codecs := serializer.NewCodecFactory(s)
@@ -101,6 +105,7 @@ var _ = Describe("#Gardenlet Chart Test", func() {
 
 		mapper.Add(appsv1.SchemeGroupVersion.WithKind("Deployment"), meta.RESTScopeNamespace)
 		mapper.Add(corev1.SchemeGroupVersion.WithKind("ConfigMap"), meta.RESTScopeNamespace)
+		mapper.Add(autoscalingv1beta2.SchemeGroupVersion.WithKind("VerticalPodAutoscaler"), meta.RESTScopeNamespace)
 		mapper.Add(schedulingv1.SchemeGroupVersion.WithKind("PriorityClass"), meta.RESTScopeRoot)
 		mapper.Add(rbacv1.SchemeGroupVersion.WithKind("ClusterRole"), meta.RESTScopeRoot)
 		mapper.Add(rbacv1.SchemeGroupVersion.WithKind("ClusterRoleBinding"), meta.RESTScopeRoot)
@@ -138,7 +143,9 @@ var _ = Describe("#Gardenlet Chart Test", func() {
 			bootstrapKubeconfigSecret *corev1.SecretReference,
 			bootstrapKubeconfigContent *string,
 			seedConfig *gardenletconfigv1alpha1.SeedConfig,
-			deploymentConfiguration *importsv1alpha1.GardenletDeploymentConfiguration,
+			deploymentConfiguration *seedmanagement.GardenletDeployment,
+			imageVectorOverwrite *string,
+			componentImageVectorOverwrites *string,
 		) {
 			gardenletValues := map[string]interface{}{
 				"enabled": true,
@@ -194,54 +201,61 @@ var _ = Describe("#Gardenlet Chart Test", func() {
 				gardenletValues["config"] = componentConfigValues
 			}
 
-			if deploymentConfiguration != nil {
-				if deploymentConfiguration.ReplicaCount != nil {
-					gardenletValues["replicaCount"] = *deploymentConfiguration.ReplicaCount
-				}
+			if deploymentConfiguration == nil {
+				deploymentConfiguration = &seedmanagement.GardenletDeployment{}
+			}
 
-				if deploymentConfiguration.ServiceAccountName != nil {
-					gardenletValues["serviceAccountName"] = *deploymentConfiguration.ServiceAccountName
-				}
+			deploymentConfiguration.Image = &seedmanagement.Image{
+				Repository: pointer.StringPtr("eu.gcr.io/gardener-project/gardener/gardenlet"),
+				Tag:        pointer.StringPtr("latest"),
+			}
 
-				if deploymentConfiguration.RevisionHistoryLimit != nil {
-					gardenletValues["revisionHistoryLimit"] = *deploymentConfiguration.RevisionHistoryLimit
-				}
+			if deploymentConfiguration.ReplicaCount != nil {
+				gardenletValues["replicaCount"] = *deploymentConfiguration.ReplicaCount
+			}
 
-				if deploymentConfiguration.ImageVectorOverwrite != nil {
-					gardenletValues["imageVectorOverwrite"] = *deploymentConfiguration.ImageVectorOverwrite
-				}
+			if deploymentConfiguration.ServiceAccountName != nil {
+				gardenletValues["serviceAccountName"] = *deploymentConfiguration.ServiceAccountName
+			}
 
-				if deploymentConfiguration.ComponentImageVectorOverwrites != nil {
-					gardenletValues["componentImageVectorOverwrites"] = *deploymentConfiguration.ComponentImageVectorOverwrites
-				}
+			if deploymentConfiguration.RevisionHistoryLimit != nil {
+				gardenletValues["revisionHistoryLimit"] = *deploymentConfiguration.RevisionHistoryLimit
+			}
 
-				if deploymentConfiguration.Resources != nil {
-					gardenletValues["resources"] = *deploymentConfiguration.Resources
-				}
+			if imageVectorOverwrite != nil {
+				gardenletValues["imageVectorOverwrite"] = *imageVectorOverwrite
+			}
 
-				if deploymentConfiguration.PodLabels != nil {
-					gardenletValues["podLabels"] = deploymentConfiguration.PodLabels
-				}
+			if componentImageVectorOverwrites != nil {
+				gardenletValues["componentImageVectorOverwrites"] = *componentImageVectorOverwrites
+			}
 
-				if deploymentConfiguration.PodAnnotations != nil {
-					gardenletValues["podAnnotations"] = deploymentConfiguration.PodAnnotations
-				}
+			if deploymentConfiguration.Resources != nil {
+				gardenletValues["resources"] = *deploymentConfiguration.Resources
+			}
 
-				if deploymentConfiguration.AdditionalVolumeMounts != nil {
-					gardenletValues["additionalVolumeMounts"] = deploymentConfiguration.AdditionalVolumeMounts
-				}
+			if deploymentConfiguration.PodLabels != nil {
+				gardenletValues["podLabels"] = deploymentConfiguration.PodLabels
+			}
 
-				if deploymentConfiguration.AdditionalVolumes != nil {
-					gardenletValues["additionalVolumes"] = deploymentConfiguration.AdditionalVolumes
-				}
+			if deploymentConfiguration.PodAnnotations != nil {
+				gardenletValues["podAnnotations"] = deploymentConfiguration.PodAnnotations
+			}
 
-				if deploymentConfiguration.Env != nil {
-					gardenletValues["env"] = deploymentConfiguration.Env
-				}
+			if deploymentConfiguration.AdditionalVolumeMounts != nil {
+				gardenletValues["additionalVolumeMounts"] = deploymentConfiguration.AdditionalVolumeMounts
+			}
 
-				if deploymentConfiguration.VPA != nil {
-					gardenletValues["vpa"] = *deploymentConfiguration.VPA
-				}
+			if deploymentConfiguration.AdditionalVolumes != nil {
+				gardenletValues["additionalVolumes"] = deploymentConfiguration.AdditionalVolumes
+			}
+
+			if deploymentConfiguration.Env != nil {
+				gardenletValues["env"] = deploymentConfiguration.Env
+			}
+
+			if deploymentConfiguration.VPA != nil {
+				gardenletValues["vpa"] = *deploymentConfiguration.VPA
 			}
 
 			deployer = applier.NewGardenletChartApplier(chartApplier, map[string]interface{}{
@@ -255,7 +269,7 @@ var _ = Describe("#Gardenlet Chart Test", func() {
 			appliercommon.ValidateGardenletChartPriorityClass(ctx, c)
 
 			serviceAccountName := "gardenlet"
-			if deploymentConfiguration != nil && deploymentConfiguration.ServiceAccountName != nil {
+			if deploymentConfiguration.ServiceAccountName != nil {
 				serviceAccountName = *deploymentConfiguration.ServiceAccountName
 			}
 
@@ -263,20 +277,50 @@ var _ = Describe("#Gardenlet Chart Test", func() {
 
 			appliercommon.ValidateGardenletChartServiceAccount(ctx, c, seedClientConnectionKubeconfig != nil, expectedLabels, serviceAccountName)
 
-			expectedGardenletConfig := appliercommon.ComputeExpectedGardenletConfiguration(componentConfigUsesTlsServerConfig, gardenClientConnectionKubeconfig != nil, seedClientConnectionKubeconfig != nil, bootstrapKubeconfig, bootstrapKubeconfigSecret, seedConfig)
-			appliercommon.VerifyGardenletComponentConfigConfigMap(ctx, c, universalDecoder, expectedGardenletConfig, expectedLabels)
+			expectedGardenletConfig := appliercommon.ComputeExpectedGardenletConfiguration(
+				componentConfigUsesTlsServerConfig,
+				gardenClientConnectionKubeconfig != nil,
+				seedClientConnectionKubeconfig != nil,
+				bootstrapKubeconfig,
+				bootstrapKubeconfigSecret,
+				seedConfig)
 
-			expectedGardenletDeploymentSpec := appliercommon.ComputeExpectedGardenletDeploymentSpec(deploymentConfiguration, componentConfigUsesTlsServerConfig, gardenClientConnectionKubeconfig, seedClientConnectionKubeconfig, expectedLabels)
-			appliercommon.VerifyGardenletDeployment(ctx, c, expectedGardenletDeploymentSpec, deploymentConfiguration, componentConfigUsesTlsServerConfig, gardenClientConnectionKubeconfig != nil, seedClientConnectionKubeconfig != nil, usesTLSBootstrapping, expectedLabels)
+			appliercommon.VerifyGardenletComponentConfigConfigMap(ctx,
+				c,
+				universalDecoder,
+				expectedGardenletConfig,
+				expectedLabels)
 
-			if deploymentConfiguration != nil  && deploymentConfiguration.ImageVectorOverwrite != nil {
+			expectedGardenletDeploymentSpec := appliercommon.ComputeExpectedGardenletDeploymentSpec(deploymentConfiguration,
+				componentConfigUsesTlsServerConfig,
+				gardenClientConnectionKubeconfig,
+				seedClientConnectionKubeconfig,
+				expectedLabels,
+				imageVectorOverwrite,
+				componentImageVectorOverwrites,
+				)
+
+			appliercommon.VerifyGardenletDeployment(ctx,
+				c,
+				expectedGardenletDeploymentSpec,
+				deploymentConfiguration,
+				componentConfigUsesTlsServerConfig,
+				gardenClientConnectionKubeconfig != nil,
+				seedClientConnectionKubeconfig != nil,
+				usesTLSBootstrapping,
+				expectedLabels,
+				imageVectorOverwrite,
+				componentImageVectorOverwrites,
+				)
+
+			if imageVectorOverwrite != nil {
 				cm := getEmptyImageVectorOverwriteConfigMap()
-				validateImageVectorOverrideConfigMap(ctx, c, cm, "images_overwrite.yaml", deploymentConfiguration.ImageVectorOverwrite)
+				validateImageVectorOverrideConfigMap(ctx, c, cm, "images_overwrite.yaml", imageVectorOverwrite)
 			}
 
-			if deploymentConfiguration != nil  && deploymentConfiguration.ComponentImageVectorOverwrites != nil {
+			if componentImageVectorOverwrites != nil {
 				cm := getEmptyImageVectorOverwriteComponentsConfigMap()
-				validateImageVectorOverrideConfigMap(ctx, c, cm, "components.yaml", deploymentConfiguration.ComponentImageVectorOverwrites)
+				validateImageVectorOverrideConfigMap(ctx, c, cm, "components.yaml", componentImageVectorOverwrites)
 			}
 
 			if componentConfigUsesTlsServerConfig {
@@ -299,20 +343,20 @@ var _ = Describe("#Gardenlet Chart Test", func() {
 			}
 
 			if deploymentConfiguration != nil && deploymentConfiguration.VPA != nil && *deploymentConfiguration.VPA{
-				// TODO expect VPA
+				appliercommon.ValidateGardenletChartVPA(ctx, c)
 			}
 		},
-		Entry("verify the default values for the Gardenlet chart & the Gardenlet component config",  nil, nil, nil, nil, nil, nil, nil, nil, nil),
-		Entry("verify Gardenlet with component config with TLS server configuration", pointer.StringPtr("dummy cert content"), pointer.StringPtr("dummy key content"), nil, nil, nil, nil, nil, nil, nil),
-		Entry("verify Gardenlet with component config having the Garden client connection kubeconfig set", nil, nil, pointer.StringPtr("dummy garden kubeconfig"), nil, nil, nil, nil, nil, nil),
-		Entry("verify Gardenlet with component config having the Seed client connection kubeconfig set",  nil, nil, nil, pointer.StringPtr("dummy seed kubeconfig"), nil, nil, nil, nil, nil),
+		Entry("verify the default values for the Gardenlet chart & the Gardenlet component config",  nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil),
+		Entry("verify Gardenlet with component config with TLS server configuration", pointer.StringPtr("dummy cert content"), pointer.StringPtr("dummy key content"), nil, nil, nil, nil, nil, nil, nil, nil, nil),
+		Entry("verify Gardenlet with component config having the Garden client connection kubeconfig set", nil, nil, pointer.StringPtr("dummy garden kubeconfig"), nil, nil, nil, nil, nil, nil, nil, nil),
+		Entry("verify Gardenlet with component config having the Seed client connection kubeconfig set",  nil, nil, nil, pointer.StringPtr("dummy seed kubeconfig"), nil, nil, nil, nil, nil, nil, nil),
 		Entry("verify Gardenlet with component config having a Bootstrap kubeconfig set",  nil, nil, nil, nil, &corev1.SecretReference{
 			Name:      "gardenlet-kubeconfig-bootstrap",
 			Namespace: "garden",
 		}, &corev1.SecretReference{
 			Name:      "gardenlet-kubeconfig",
 			Namespace: gardencorev1beta1constants.GardenNamespace,
-		}, pointer.StringPtr("dummy bootstrap kubeconfig"), nil, nil),
+		}, pointer.StringPtr("dummy bootstrap kubeconfig"), nil, nil, nil, nil),
 		Entry("verify that the SeedConfig is set in the component config Config Map",  nil, nil, nil, nil, nil, nil, nil,
 			&gardenletconfigv1alpha1.SeedConfig{
 				SeedTemplate: gardencorev1beta1.SeedTemplate{
@@ -320,20 +364,22 @@ var _ = Describe("#Gardenlet Chart Test", func() {
 						Name: "sweet-seed",
 					},
 				},
-			},nil),
-		Entry("verify deployment with image vector override", nil, nil, nil, nil, nil, nil, nil, nil, &importsv1alpha1.GardenletDeploymentConfiguration{
-			ImageVectorOverwrite: pointer.StringPtr("dummy-override-content"),
-		}),
-		Entry("verify deployment with component image vector override", nil, nil, nil, nil, nil, nil, nil, nil, &importsv1alpha1.GardenletDeploymentConfiguration{
-			ComponentImageVectorOverwrites: pointer.StringPtr("dummy-override-content"),
-		}),
-		Entry("verify deployment with replica count", nil, nil, nil, nil, nil, nil, nil, nil, &importsv1alpha1.GardenletDeploymentConfiguration{
+			},nil, nil, nil),
+
+			Entry("verify deployment with image vector override", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, pointer.StringPtr("dummy-override-content"),
+		),
+
+		Entry("verify deployment with component image vector override", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, pointer.StringPtr("dummy-override-content")),
+
+		Entry("verify deployment with replica count", nil, nil, nil, nil, nil, nil, nil, nil, &seedmanagement.GardenletDeployment{
 			ReplicaCount:                   pointer.Int32Ptr(2),
-		}),
-		Entry("verify deployment with service account", nil, nil, nil, nil, nil, nil, nil, nil, &importsv1alpha1.GardenletDeploymentConfiguration{
+		}, nil, nil),
+
+		Entry("verify deployment with service account", nil, nil, nil, nil, nil, nil, nil, nil, &seedmanagement.GardenletDeployment{
 			ServiceAccountName: pointer.StringPtr("ax"),
-		}),
-		Entry("verify deployment with resources", nil, nil, nil, nil, nil, nil, nil, nil, &importsv1alpha1.GardenletDeploymentConfiguration{
+		}, nil, nil),
+
+		Entry("verify deployment with resources", nil, nil, nil, nil, nil, nil, nil, nil, &seedmanagement.GardenletDeployment{
 			Resources:          &corev1.ResourceRequirements{
 				Requests: corev1.ResourceList{
 					corev1.ResourceCPU:    resource.MustParse("800m"),
@@ -344,43 +390,49 @@ var _ = Describe("#Gardenlet Chart Test", func() {
 					corev1.ResourceMemory: resource.MustParse("25Mi"),
 				},
 			},
-		}),
-		Entry("verify deployment with pod labels", nil, nil, nil, nil, nil, nil, nil, nil, &importsv1alpha1.GardenletDeploymentConfiguration{
+		}, nil, nil),
+
+		Entry("verify deployment with pod labels", nil, nil, nil, nil, nil, nil, nil, nil, &seedmanagement.GardenletDeployment{
 			PodLabels: map[string]string{
 				"x": "y",
 			},
-		}),
-		Entry("verify deployment with pod annotations", nil, nil, nil, nil, nil, nil, nil, nil, &importsv1alpha1.GardenletDeploymentConfiguration{
+		}, nil, nil),
+
+		Entry("verify deployment with pod annotations", nil, nil, nil, nil, nil, nil, nil, nil, &seedmanagement.GardenletDeployment{
 			PodAnnotations: map[string]string{
 				"x": "y",
 			},
-		}),
-		Entry("verify deployment with additional volumes", nil, nil, nil, nil, nil, nil, nil, nil, &importsv1alpha1.GardenletDeploymentConfiguration{
+		}, nil, nil),
+
+		Entry("verify deployment with additional volumes", nil, nil, nil, nil, nil, nil, nil, nil, &seedmanagement.GardenletDeployment{
 			AdditionalVolumes: []corev1.Volume{
 				{
 					Name: "a",
 					VolumeSource: corev1.VolumeSource{},
 				},
 			},
-		}),
-		Entry("verify deployment with additional volume mounts", nil, nil, nil, nil, nil, nil, nil, nil, &importsv1alpha1.GardenletDeploymentConfiguration{
+		}, nil, nil),
+
+		Entry("verify deployment with additional volume mounts", nil, nil, nil, nil, nil, nil, nil, nil, &seedmanagement.GardenletDeployment{
 			AdditionalVolumeMounts: []corev1.VolumeMount{
 				{
 					Name: "a",
 				},
 			},
-		}),
-		Entry("verify deployment with env variables", nil, nil, nil, nil, nil, nil, nil, nil, &importsv1alpha1.GardenletDeploymentConfiguration{
+		}, nil, nil),
+
+		Entry("verify deployment with env variables", nil, nil, nil, nil, nil, nil, nil, nil, &seedmanagement.GardenletDeployment{
 			Env: []corev1.EnvVar{
 				{
 					Name:      "KUBECONFIG",
 					Value:     "XY",
 				},
 			},
-		}),
-		Entry("verify deployment with VPA enabled", nil, nil, nil, nil, nil, nil, nil, nil, &importsv1alpha1.GardenletDeploymentConfiguration{
+		}, nil, nil),
+
+		Entry("verify deployment with VPA enabled", nil, nil, nil, nil, nil, nil, nil, nil, &seedmanagement.GardenletDeployment{
 			VPA: pointer.BoolPtr(true),
-		}),
+		}, nil, nil),
 	)
 })
 

@@ -49,11 +49,11 @@ spec:
       - name: gardenCluster
         target: '#garden-cluster'
     data:
-      - name: seedBackup
+      - name: seedBackupCredentials
         configMapRef:
           name: gardenlet-landscaper-config
           namespace: ls-system
-          key: seedBackup
+          key: seedBackupCredentials
       - name: deploymentConfiguration
         configMapRef:
           name: gardenlet-landscaper-config
@@ -64,3 +64,13 @@ spec:
           name: gardenlet-landscaper-config
           namespace: ls-system
           key: componentConfiguration
+      - name: imageVectorOverwrite
+        configMapRef:
+          name: gardenlet-image-vector-overwrite
+          namespace: ls-system
+          key: imageVectorOverwrite
+      - name: componentImageVectorOverwrites
+        configMapRef:
+          name: gardenlet-component-image-vector-overwrites
+          namespace: ls-system
+          key: componentImageVectorOverwrites

@@ -17,7 +17,9 @@ package v1alpha1
 import (
 	"fmt"
 
+	"github.com/gardener/gardener/pkg/apis/seedmanagement"
 	"github.com/gardener/gardener/pkg/apis/seedmanagement/helper"
+	seedmanagementv1alpha1 "github.com/gardener/gardener/pkg/apis/seedmanagement/v1alpha1"
 	configv1alpha1 "github.com/gardener/gardener/pkg/gardenlet/apis/config/v1alpha1"
 
 	"k8s.io/apimachinery/pkg/conversion"
@@ -52,4 +54,12 @@ func Convert_imports_Imports_To_v1alpha1_Imports(in *imports.Imports, out *Impor
 		out.ComponentConfiguration.Raw = raw
 	}
 	return nil
+}
+
+func Convert_v1alpha1_GardenletDeployment_To_seedmanagement_GardenletDeployment(in *seedmanagementv1alpha1.GardenletDeployment, out *seedmanagement.GardenletDeployment, s conversion.Scope) error {
+	return seedmanagementv1alpha1.Convert_v1alpha1_GardenletDeployment_To_seedmanagement_GardenletDeployment(in, out, s)
+}
+
+func Convert_seedmanagement_GardenletDeployment_To_v1alpha1_GardenletDeployment(in *seedmanagement.GardenletDeployment, out *seedmanagementv1alpha1.GardenletDeployment, s conversion.Scope) error {
+	return seedmanagementv1alpha1.Convert_seedmanagement_GardenletDeployment_To_v1alpha1_GardenletDeployment(in, out, s)
 }

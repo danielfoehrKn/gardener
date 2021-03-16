@@ -20,7 +20,7 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 
-	"github.com/gardener/gardener/landscaper/gardenlet/landscaper-gardenlet/app"
+	"github.com/gardener/gardener/landscaper/cmd/landscaper-gardenlet/app"
 )
 
 func main() {

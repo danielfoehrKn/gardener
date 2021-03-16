@@ -25,6 +25,7 @@ import (
 	"k8s.io/utils/pointer"
 
 	gardencorev1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1"
+	"github.com/gardener/gardener/pkg/apis/seedmanagement"
 	gardenletconfigv1alpha1 "github.com/gardener/gardener/pkg/gardenlet/apis/config/v1alpha1"
 
 	"github.com/gardener/gardener/landscaper/gardenlet/pkg/apis/imports"
@@ -80,7 +81,7 @@ var _ = Describe("ValidateLandscaperImports", func() {
 				Configuration: landscaperv1alpha1.AnyJSON{RawMessage: []byte("dummy")},
 			}},
 			ComponentConfiguration: &gardenletConfiguration,
-			DeploymentConfiguration: &imports.GardenletDeploymentConfiguration{},
+			DeploymentConfiguration: &seedmanagement.GardenletDeployment{},
 		}
 
 	})
@@ -185,6 +186,19 @@ var _ = Describe("ValidateLandscaperImports", func() {
 			})
 		})
 		Context("validate the gardenlet deployment configuration", func() {
+			It("should validate that the image is not set", func() {
+				landscaperGardenletImport.DeploymentConfiguration.Image = &seedmanagement.Image{}
+				landscaperGardenletImport.ComponentConfiguration = &gardenletConfiguration
+
+				errorList := ValidateLandscaperImports(landscaperGardenletImport)
+				Expect(errorList).To(ConsistOf(
+					PointTo(MatchFields(IgnoreExtras, Fields{
+						"Type":  Equal(field.ErrorTypeForbidden),
+						"Field": Equal("deploymentConfiguration.image"),
+					})),
+				))
+			})
+
 			It("should validate that the replica count is not negative", func() {
 				landscaperGardenletImport.DeploymentConfiguration.ReplicaCount = pointer.Int32Ptr(-1)
 				landscaperGardenletImport.ComponentConfiguration = &gardenletConfiguration
@@ -252,7 +266,7 @@ var _ = Describe("ValidateLandscaperImports", func() {
 		})
 
 		Context("validate the backup configuration", func() {
-			It("should validate the backup configuration - do not require landscaperImports.SeedBackup to be set if Seed is configured with Backup", func() {
+			It("should validate the backup configuration - do not require landscaperImports.SeedBackupCredentials to be set if Seed is configured with Backup", func() {
 				gardenletConfiguration.SeedConfig.Spec.Backup = &gardencorev1beta1.SeedBackup{
 					Provider: "a",
 					SecretRef: corev1.SecretReference{
@@ -268,9 +282,7 @@ var _ = Describe("ValidateLandscaperImports", func() {
 			})
 
 			It("should validate the backup configuration - require field componentConfiguration.SeedConfig.Spec.Backup in imports to be set when field seedBackup is configured", func() {
-				landscaperGardenletImport.SeedBackup = &imports.SeedBackup{
-					Credentials: json.RawMessage{},
-				}
+				landscaperGardenletImport.SeedBackupCredentials = &json.RawMessage{}
 
 				errorList := ValidateLandscaperImports(landscaperGardenletImport)
 				Expect(errorList).To(ConsistOf(
@@ -283,76 +295,38 @@ var _ = Describe("ValidateLandscaperImports", func() {
 
 			It("should validate the backup configuration - Seed Backup provider missing", func() {
 				gardenletConfiguration.SeedConfig.Spec.Backup = &gardencorev1beta1.SeedBackup{
-					Provider: "a",
+					Provider: "",
 					SecretRef: corev1.SecretReference{
 						Name:      "a",
-						Namespace: "b",
 					},
 				}
 				landscaperGardenletImport.ComponentConfiguration = &gardenletConfiguration
 
-				landscaperGardenletImport.SeedBackup = &imports.SeedBackup{
-					Credentials: json.RawMessage{},
-				}
+				landscaperGardenletImport.SeedBackupCredentials = &json.RawMessage{}
 
 				errorList := ValidateLandscaperImports(landscaperGardenletImport)
 				Expect(errorList).To(ConsistOf(
 					PointTo(MatchFields(IgnoreExtras, Fields{
 						"Type":   Equal(field.ErrorTypeRequired),
 						"Field":  Equal("componentConfiguration.seedConfig.spec.backup.provider"),
-						"Detail": ContainSubstring("seedBackup.provider"),
-					})),
-					PointTo(MatchFields(IgnoreExtras, Fields{
-						"Type":  Equal(field.ErrorTypeRequired),
-						"Field": Equal("componentConfiguration.seedConfig.spec.backup.provider"),
 					})),
 				))
 			})
 
 			It("should validate the backup configuration - Seed Backup credentials missing", func() {
 				gardenletConfiguration.SeedConfig.Spec.Backup = &gardencorev1beta1.SeedBackup{
-					Provider: "a",
-					SecretRef: corev1.SecretReference{
-						Name:      "a",
-						Namespace: "b",
-					},
+					Provider: "x",
+					SecretRef: corev1.SecretReference{},
 				}
 				landscaperGardenletImport.ComponentConfiguration = &gardenletConfiguration
 
-				landscaperGardenletImport.SeedBackup = &imports.SeedBackup{
-					Provider: "a",
-				}
+				landscaperGardenletImport.SeedBackupCredentials = &json.RawMessage{}
 
 				errorList := ValidateLandscaperImports(landscaperGardenletImport)
 				Expect(errorList).To(ConsistOf(
 					PointTo(MatchFields(IgnoreExtras, Fields{
 						"Type":  Equal(field.ErrorTypeRequired),
-						"Field": Equal("componentConfiguration.seedConfig.spec.backup.credentials"),
-					})),
-				))
-			})
-
-			It("should validate the backup configuration - Seed Backup provider does not match", func() {
-				gardenletConfiguration.SeedConfig.Spec.Backup = &gardencorev1beta1.SeedBackup{
-					Provider: "a",
-					SecretRef: corev1.SecretReference{
-						Name:      "a",
-						Namespace: "b",
-					},
-				}
-				landscaperGardenletImport.ComponentConfiguration = &gardenletConfiguration
-
-				landscaperGardenletImport.SeedBackup = &imports.SeedBackup{
-					Provider:    "b",
-					Credentials: json.RawMessage{},
-				}
-
-				errorList := ValidateLandscaperImports(landscaperGardenletImport)
-				Expect(errorList).To(ConsistOf(
-					PointTo(MatchFields(IgnoreExtras, Fields{
-						"Type":   Equal(field.ErrorTypeRequired),
-						"Field":  Equal("componentConfiguration.seedConfig.spec.backup.provider"),
-						"Detail": ContainSubstring("seedBackup.provider"),
+						"Field": Equal("componentConfiguration.seedConfig.spec.backup.secretRef.Name"),
 					})),
 				))
 			})

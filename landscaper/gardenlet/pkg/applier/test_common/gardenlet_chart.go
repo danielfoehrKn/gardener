@@ -16,10 +16,12 @@ package test_common
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
+	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
@@ -28,19 +30,58 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	autoscalingv1beta2 "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1beta2"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	baseconfigv1alpha1 "k8s.io/component-base/config/v1alpha1"
 	"k8s.io/klog"
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	importsv1alpha1 "github.com/gardener/gardener/landscaper/gardenlet/pkg/apis/imports/v1alpha1"
 	gardencorev1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1"
 	gardencorev1beta1constants "github.com/gardener/gardener/pkg/apis/core/v1beta1/constants"
+	"github.com/gardener/gardener/pkg/apis/seedmanagement"
 	gardenletconfigv1alpha1 "github.com/gardener/gardener/pkg/gardenlet/apis/config/v1alpha1"
 	"github.com/gardener/gardener/pkg/utils"
 	kutil "github.com/gardener/gardener/pkg/utils/kubernetes"
 )
+
+// ValidateGardenletChartVPA validates the vpa of the Gardenlet chart.
+func ValidateGardenletChartVPA(ctx context.Context, c client.Client) {
+	vpa := &autoscalingv1beta2.VerticalPodAutoscaler{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:                       "gardenlet-vpa",
+			Namespace:                  "garden",
+		},
+	}
+
+	Expect(c.Get(
+		ctx,
+		kutil.Key(vpa.Namespace, vpa.Name),
+		vpa,
+	)).ToNot(HaveOccurred())
+
+	auto := autoscalingv1beta2.UpdateModeAuto
+	expectedSpec := autoscalingv1beta2.VerticalPodAutoscalerSpec{
+		TargetRef:      &autoscalingv1.CrossVersionObjectReference{
+			APIVersion: "apps/v1",
+			Kind: "Deployment",
+			Name: "gardenlet",
+		},
+		UpdatePolicy:   &autoscalingv1beta2.PodUpdatePolicy{UpdateMode: &auto},
+		ResourcePolicy: &autoscalingv1beta2.PodResourcePolicy{ContainerPolicies: []autoscalingv1beta2.ContainerResourcePolicy{
+			{
+				ContainerName: "*",
+				MinAllowed:    corev1.ResourceList{
+					"cpu":    resource.MustParse("50m"),
+					"memory": resource.MustParse("200Mi"),
+				},
+			},
+		}},
+	}
+
+	Expect(vpa.Spec).To(Equal(expectedSpec))
+}
+
 
 // ValidateGardenletChartPriorityClass validates the priority class of the Gardenlet chart.
 func ValidateGardenletChartPriorityClass(ctx context.Context, c client.Client) {
@@ -293,7 +334,7 @@ func ComputeExpectedGardenletConfiguration(componentConfigUsesTlsServerConfig, h
 				LeaseDuration: metav1.Duration{Duration: 15 * time.Second},
 				RenewDeadline: metav1.Duration{Duration: 10 * time.Second},
 				RetryPeriod:   metav1.Duration{Duration: 2 * time.Second},
-				ResourceLock:  resourcelock.ConfigMapsLeasesResourceLock,
+				ResourceLock:  resourcelock.LeasesResourceLock,
 			},
 			LockObjectName:      &lockObjectName,
 			LockObjectNamespace: &lockObjectNamespace,
@@ -335,8 +376,8 @@ func ComputeExpectedGardenletConfiguration(componentConfigUsesTlsServerConfig, h
 
 	if bootstrapKubeconfig != nil {
 		config.GardenClientConnection.BootstrapKubeconfig = bootstrapKubeconfig
-		config.GardenClientConnection.KubeconfigSecret = kubeconfigSecret
 	}
+	config.GardenClientConnection.KubeconfigSecret = kubeconfigSecret
 
 	if seedConfig != nil {
 		config.SeedConfig = seedConfig
@@ -380,7 +421,7 @@ func getEmptyGardenletConfigMap() *corev1.ConfigMap {
 // GetExpectedGardenletDeploymentSpec computes the expected Gardenlet deployment spec based on input parameters
 // needs to equal exactly what is deployed via the helm chart (including defaults set in the helm chart)
 // as a consequence, if non-optional changes to the helm chart are made, these tests will fail by design
-func ComputeExpectedGardenletDeploymentSpec(deploymentConfiguration *importsv1alpha1.GardenletDeploymentConfiguration, componentConfigUsesTlsServerConfig bool, gardenClientConnectionKubeconfig, seedClientConnectionKubeconfig *string, expectedLabels map[string]string) appsv1.DeploymentSpec {
+func ComputeExpectedGardenletDeploymentSpec(deploymentConfiguration *seedmanagement.GardenletDeployment, componentConfigUsesTlsServerConfig bool, gardenClientConnectionKubeconfig, seedClientConnectionKubeconfig *string, expectedLabels map[string]string, imageVectorOverwrite, componentImageVectorOverwrites *string) appsv1.DeploymentSpec {
 	deployment := appsv1.DeploymentSpec{
 		RevisionHistoryLimit: pointer.Int32Ptr(10),
 		Replicas:  pointer.Int32Ptr(1),
@@ -400,7 +441,7 @@ func ComputeExpectedGardenletDeploymentSpec(deploymentConfiguration *importsv1al
 				Containers: []corev1.Container{
 					{
 						Name:            "gardenlet",
-						Image:           "eu.gcr.io/gardener-project/gardener/gardenlet:latest",
+						Image:           fmt.Sprintf("%s:%s", *deploymentConfiguration.Image.Repository, *deploymentConfiguration.Image.Tag),
 						ImagePullPolicy: corev1.PullIfNotPresent,
 						Command: []string{
 							"/gardenlet",
@@ -504,51 +545,52 @@ func ComputeExpectedGardenletDeploymentSpec(deploymentConfiguration *importsv1al
 				deployment.Template.Spec.Containers[0].Resources.Limits[corev1.ResourceMemory] = value
 			}
 		}
-
-		if deploymentConfiguration.ImageVectorOverwrite != nil {
-			deployment.Template.Spec.Containers[0].Env = append(deployment.Template.Spec.Containers[0].Env, corev1.EnvVar{
-				Name:  "IMAGEVECTOR_OVERWRITE",
-				Value: "/charts_overwrite/images_overwrite.yaml",
-			})
-			deployment.Template.Spec.Containers[0].VolumeMounts = append(deployment.Template.Spec.Containers[0].VolumeMounts, corev1.VolumeMount{
-				Name:      "gardenlet-imagevector-overwrite",
-				ReadOnly:  true,
-				MountPath: "/charts_overwrite",
-			})
-			deployment.Template.Spec.Volumes = append(deployment.Template.Spec.Volumes, corev1.Volume{
-				Name: "gardenlet-imagevector-overwrite",
-				VolumeSource: corev1.VolumeSource{
-					ConfigMap: &corev1.ConfigMapVolumeSource{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: "gardenlet-imagevector-overwrite",
-						},
-					},
-				},
-			})
-		}
-
-		if deploymentConfiguration.ComponentImageVectorOverwrites != nil {
-			deployment.Template.Spec.Containers[0].Env = append(deployment.Template.Spec.Containers[0].Env, corev1.EnvVar{
-				Name:  "IMAGEVECTOR_OVERWRITE_COMPONENTS",
-				Value: "/charts_overwrite_components/components.yaml",
-			})
-			deployment.Template.Spec.Containers[0].VolumeMounts = append(deployment.Template.Spec.Containers[0].VolumeMounts, corev1.VolumeMount{
-				Name:      "gardenlet-imagevector-overwrite-components",
-				ReadOnly:  true,
-				MountPath: "/charts_overwrite_components",
-			})
-			deployment.Template.Spec.Volumes = append(deployment.Template.Spec.Volumes, corev1.Volume{
-				Name: "gardenlet-imagevector-overwrite-components",
-				VolumeSource: corev1.VolumeSource{
-					ConfigMap: &corev1.ConfigMapVolumeSource{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: "gardenlet-imagevector-overwrite-components",
-						},
-					},
-				},
-			})
-		}
 	}
+
+	if imageVectorOverwrite != nil {
+		deployment.Template.Spec.Containers[0].Env = append(deployment.Template.Spec.Containers[0].Env, corev1.EnvVar{
+			Name:  "IMAGEVECTOR_OVERWRITE",
+			Value: "/charts_overwrite/images_overwrite.yaml",
+		})
+		deployment.Template.Spec.Containers[0].VolumeMounts = append(deployment.Template.Spec.Containers[0].VolumeMounts, corev1.VolumeMount{
+			Name:      "gardenlet-imagevector-overwrite",
+			ReadOnly:  true,
+			MountPath: "/charts_overwrite",
+		})
+		deployment.Template.Spec.Volumes = append(deployment.Template.Spec.Volumes, corev1.Volume{
+			Name: "gardenlet-imagevector-overwrite",
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: "gardenlet-imagevector-overwrite",
+					},
+				},
+			},
+		})
+	}
+
+	if componentImageVectorOverwrites != nil {
+		deployment.Template.Spec.Containers[0].Env = append(deployment.Template.Spec.Containers[0].Env, corev1.EnvVar{
+			Name:  "IMAGEVECTOR_OVERWRITE_COMPONENTS",
+			Value: "/charts_overwrite_components/components.yaml",
+		})
+		deployment.Template.Spec.Containers[0].VolumeMounts = append(deployment.Template.Spec.Containers[0].VolumeMounts, corev1.VolumeMount{
+			Name:      "gardenlet-imagevector-overwrite-components",
+			ReadOnly:  true,
+			MountPath: "/charts_overwrite_components",
+		})
+		deployment.Template.Spec.Volumes = append(deployment.Template.Spec.Volumes, corev1.Volume{
+			Name: "gardenlet-imagevector-overwrite-components",
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: "gardenlet-imagevector-overwrite-components",
+					},
+				},
+			},
+		})
+	}
+
 
 	if gardenClientConnectionKubeconfig != nil {
 		deployment.Template.Spec.Containers[0].VolumeMounts = append(deployment.Template.Spec.Containers[0].VolumeMounts, corev1.VolumeMount{
@@ -630,7 +672,17 @@ func ComputeExpectedGardenletDeploymentSpec(deploymentConfiguration *importsv1al
 }
 
 // VerifyGardenletDeployment verifies that the actual Gardenlet deployment equals the expected deployment
-func VerifyGardenletDeployment(ctx context.Context, c client.Client, expectedDeploymentSpec appsv1.DeploymentSpec, deploymentConfiguration *importsv1alpha1.GardenletDeploymentConfiguration, componentConfigHasTLSServerConfig, hasGardenClientConnectionKubeconfig, hasSeedClientConnectionKubeconfig, usesTLSBootstrapping bool, expectedLabels map[string]string) {
+func VerifyGardenletDeployment(ctx context.Context,
+	c client.Client,
+	expectedDeploymentSpec appsv1.DeploymentSpec,
+	deploymentConfiguration *seedmanagement.GardenletDeployment,
+	componentConfigHasTLSServerConfig,
+	hasGardenClientConnectionKubeconfig,
+	hasSeedClientConnectionKubeconfig,
+	usesTLSBootstrapping bool,
+	expectedLabels map[string]string,
+	imageVectorOverwrite,
+	componentImageVectorOverwrites *string) {
 	deployment := getEmptyGardenletDeployment()
 	expectedDeployment := getEmptyGardenletDeployment()
 	expectedDeployment.Labels = expectedLabels
@@ -644,11 +696,11 @@ func VerifyGardenletDeployment(ctx context.Context, c client.Client, expectedDep
 	Expect(deployment.ObjectMeta.Labels).To(Equal(expectedDeployment.ObjectMeta.Labels))
 	Expect(deployment.Spec.Template.Annotations["checksum/configmap-gardenlet-config"]).ToNot(BeEmpty())
 
-	if deploymentConfiguration != nil && deploymentConfiguration.ImageVectorOverwrite != nil {
+	if imageVectorOverwrite != nil {
 		Expect(deployment.Spec.Template.Annotations["checksum/configmap-gardenlet-imagevector-overwrite"]).ToNot(BeEmpty())
 	}
 
-	if deploymentConfiguration != nil && deploymentConfiguration.ComponentImageVectorOverwrites != nil {
+	if componentImageVectorOverwrites != nil {
 		Expect(deployment.Spec.Template.Annotations["checksum/configmap-gardenlet-imagevector-overwrite-components"]).ToNot(BeEmpty())
 	}
 

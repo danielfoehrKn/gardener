@@ -69,7 +69,7 @@ func NewManagedSeedController(ctx context.Context, clientMap clientmap.ClientMap
 	return &Controller{
 		gardenClient:        gardenClient.Client(),
 		config:              config,
-		reconciler:          newReconciler(gardenClient, newActuator(gardenClient, clientMap, newValuesHelper(config, imageVector), logger), recorder, logger),
+		reconciler:          newReconciler(gardenClient, newActuator(gardenClient, clientMap, NewValuesHelper(config, imageVector), logger), recorder, logger),
 		managedSeedInformer: managedSeedInformer,
 		managedSeedQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "ManagedSeed"),
 		workerCh:            make(chan int),

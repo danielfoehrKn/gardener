@@ -28,7 +28,7 @@ import (
 
 	gardenletconfig "github.com/gardener/gardener/pkg/gardenlet/apis/config"
 	gardenletconfigv1alpha1 "github.com/gardener/gardener/pkg/gardenlet/apis/config/v1alpha1"
-	"github.com/gardener/gardener/pkg/version/verflag"
+	"k8s.io/component-base/version/verflag"
 	landscaperconstants "github.com/gardener/landscaper/apis/deployer/container"
 	"github.com/spf13/cobra"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -79,7 +79,7 @@ func run(ctx context.Context) error {
 
 	imports, err := loadImportsFromFile(importPath)
 	if err != nil {
-		return fmt.Errorf("unable to load landscaper imports: %v", err)
+		return fmt.Errorf("unable to load landscaper imports: %w", err)
 	}
 
 	if errs := importvalidation.ValidateLandscaperImports(imports); len(errs) > 0 {
@@ -114,7 +114,7 @@ func getLandscaperEnvironmentVariables() (string, string, string, error) {
 }
 
 // loadImportsFromFile loads the content of file and decodes it as a
-// Imports object.
+// imports object.
 func loadImportsFromFile(file string) (*imports.Imports, error) {
 	data, err := ioutil.ReadFile(file)
 	if err != nil {

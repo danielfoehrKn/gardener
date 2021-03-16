@@ -8,16 +8,21 @@ imports:
   - name: gardenCluster
     targetType: landscaper.gardener.cloud/kubernetes-cluster
 
-  - name: seedBackup
+  - name: seedBackupCredentials
+    required: false
+    schema:
+      # provider specific credentials with varying properties
+      type: object
+
+  - name: imageVectorOverwrite
     required: false
     schema:
       type: object
-      properties:
-        provider:
-          type: string
-        # provider specific credentials just parsed as string and created as secret
-        credentials:
-          type: object
+
+  - name: componentImageVectorOverwrites
+    required: false
+    schema:
+      type: object
 
   - name: deploymentConfiguration
     required: false
@@ -70,13 +75,6 @@ imports:
         vpa:
           schema:
             type: bool
-        imageVectorOverwrite:
-          schema:
-            type: string
-        componentImageVectorOverwrites:
-          schema:
-            type: string
-
 
   # check example/20-componentconfig-gardenlet.yaml for what can be configured here
   - name: componentConfiguration

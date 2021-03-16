@@ -34,7 +34,4 @@ func RegisterDefaults(scheme *runtime.Scheme) error {
 
 func SetObjectDefaults_Imports(in *Imports) {
 	SetDefaults_Imports(in)
-	if in.DeploymentConfiguration != nil {
-		SetDefaults_GardenletDeploymentConfiguration(in.DeploymentConfiguration)
-	}
 }

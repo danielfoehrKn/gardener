@@ -23,6 +23,7 @@ import (
 
 	v1beta1constants "github.com/gardener/gardener/pkg/apis/core/v1beta1/constants"
 	"github.com/gardener/gardener/pkg/apis/seedmanagement/helper"
+	seedmanagementv1alpha1 "github.com/gardener/gardener/pkg/apis/seedmanagement/v1alpha1"
 	configv1alpha1 "github.com/gardener/gardener/pkg/gardenlet/apis/config/v1alpha1"
 	"github.com/gardener/gardener/pkg/operation/common"
 )
@@ -86,10 +87,10 @@ func SetDefaultsComponentConfiguration(gardenletConfig *configv1alpha1.Gardenlet
 	}
 }
 
-// SetDefaults_GardenletDeploymentConfiguration sets default values for GardenletDeploymentConfiguration objects.
-func SetDefaults_GardenletDeploymentConfiguration(obj *GardenletDeploymentConfiguration) {
+// SetDefaults_DeploymentConfiguration sets default values for DeploymentConfiguration objects.
+func SetDefaults_GardenletDeploymentConfiguration(obj *seedmanagementv1alpha1.GardenletDeployment) {
 	if obj == nil {
-		obj = &GardenletDeploymentConfiguration{}
+		obj = &seedmanagementv1alpha1.GardenletDeployment{}
 	}
 
 	// Set default replica count
