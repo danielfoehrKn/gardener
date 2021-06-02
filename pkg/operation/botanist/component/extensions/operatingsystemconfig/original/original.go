@@ -39,6 +39,8 @@ func Config(ctx components.Context) ([]extensionsv1alpha1.Unit, []extensionsv1al
 	)
 
 	for _, component := range ComponentsFn(ctx.CRIName) {
+		// handing over the component context that contains all the necessary information to
+		// generate the Unit and Files in the format expected by the OSC.Spec
 		u, f, err := component.Config(ctx)
 		if err != nil {
 			return nil, nil, err

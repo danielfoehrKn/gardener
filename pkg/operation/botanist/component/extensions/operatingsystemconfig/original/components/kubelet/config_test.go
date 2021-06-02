@@ -17,9 +17,11 @@ package kubelet_test
 import (
 	"time"
 
+	gardencorev1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1"
 	"github.com/gardener/gardener/pkg/operation/botanist/component/extensions/operatingsystemconfig/original/components"
 	"github.com/gardener/gardener/pkg/operation/botanist/component/extensions/operatingsystemconfig/original/components/kubelet"
 	"github.com/gardener/gardener/pkg/utils"
+	"k8s.io/apimachinery/pkg/api/resource"
 
 	"github.com/Masterminds/semver"
 	. "github.com/onsi/ginkgo"
@@ -37,10 +39,7 @@ var _ = Describe("Config", func() {
 		params            = components.ConfigurableKubeletConfigParameters{
 			CpuCFSQuota:                      pointer.BoolPtr(false),
 			CpuManagerPolicy:                 pointer.StringPtr("policy"),
-			EvictionHard:                     map[string]string{"memory.available": "123"},
-			EvictionMinimumReclaim:           map[string]string{"imagefs.available": "123"},
-			EvictionSoft:                     map[string]string{"imagefs.inodesFree": "123"},
-			EvictionSoftGracePeriod:          map[string]string{"nodefs.available": "123"},
+			EvictionHard:                     map[string]string{"memory.available": "123Mi"},
 			EvictionPressureTransitionPeriod: &metav1.Duration{Duration: 42 * time.Minute},
 			EvictionMaxPodGracePeriod:        pointer.Int32Ptr(120),
 			FailSwapOn:                       pointer.BoolPtr(false),
@@ -87,31 +86,11 @@ var _ = Describe("Config", func() {
 			EventRecordQPS:               pointer.Int32Ptr(50),
 			EvictionHard: map[string]string{
 				"memory.available":   "100Mi",
-				"imagefs.available":  "5%",
+				"imagefs.available":  "15%",
 				"imagefs.inodesFree": "5%",
-				"nodefs.available":   "5%",
-				"nodefs.inodesFree":  "5%",
-			},
-			EvictionMinimumReclaim: map[string]string{
-				"memory.available":   "0Mi",
-				"imagefs.available":  "0Mi",
-				"imagefs.inodesFree": "0Mi",
-				"nodefs.available":   "0Mi",
-				"nodefs.inodesFree":  "0Mi",
-			},
-			EvictionSoft: map[string]string{
-				"memory.available":   "200Mi",
-				"imagefs.available":  "10%",
-				"imagefs.inodesFree": "10%",
 				"nodefs.available":   "10%",
-				"nodefs.inodesFree":  "10%",
-			},
-			EvictionSoftGracePeriod: map[string]string{
-				"memory.available":   "1m30s",
-				"imagefs.available":  "1m30s",
-				"imagefs.inodesFree": "1m30s",
-				"nodefs.available":   "1m30s",
-				"nodefs.inodesFree":  "1m30s",
+				"nodefs.inodesFree":  "5%",
+				"pid.available":  "10%",
 			},
 			EvictionPressureTransitionPeriod: metav1.Duration{Duration: 4 * time.Minute},
 			EvictionMaxPodGracePeriod:        90,
@@ -124,9 +103,11 @@ var _ = Describe("Config", func() {
 			ImageMinimumGCAge:                metav1.Duration{Duration: 2 * time.Minute},
 			KubeAPIBurst:                     50,
 			KubeAPIQPS:                       pointer.Int32Ptr(50),
+			// default kube-reserved if both the machine type and the root volume are not set
 			KubeReserved: map[string]string{
 				"cpu":    "80m",
 				"memory": "1Gi",
+				"pid": "2048",
 			},
 			MaxOpenFiles:              1000000,
 			MaxPods:                   110,
@@ -177,28 +158,11 @@ var _ = Describe("Config", func() {
 			EventBurst:                   50,
 			EventRecordQPS:               pointer.Int32Ptr(50),
 			EvictionHard: utils.MergeStringMaps(params.EvictionHard, map[string]string{
-				"imagefs.available":  "5%",
+				"imagefs.available":  "15%",
 				"imagefs.inodesFree": "5%",
-				"nodefs.available":   "5%",
+				"nodefs.available":   "10%",
 				"nodefs.inodesFree":  "5%",
-			}),
-			EvictionMinimumReclaim: utils.MergeStringMaps(params.EvictionMinimumReclaim, map[string]string{
-				"memory.available":   "0Mi",
-				"imagefs.inodesFree": "0Mi",
-				"nodefs.available":   "0Mi",
-				"nodefs.inodesFree":  "0Mi",
-			}),
-			EvictionSoft: utils.MergeStringMaps(params.EvictionSoft, map[string]string{
-				"memory.available":  "200Mi",
-				"imagefs.available": "10%",
-				"nodefs.available":  "10%",
-				"nodefs.inodesFree": "10%",
-			}),
-			EvictionSoftGracePeriod: utils.MergeStringMaps(params.EvictionSoftGracePeriod, map[string]string{
-				"memory.available":   "1m30s",
-				"imagefs.available":  "1m30s",
-				"imagefs.inodesFree": "1m30s",
-				"nodefs.inodesFree":  "1m30s",
+				"pid.available":  "10%",
 			}),
 			EvictionPressureTransitionPeriod: *params.EvictionPressureTransitionPeriod,
 			EvictionMaxPodGracePeriod:        *params.EvictionMaxPodGracePeriod,
@@ -212,7 +176,8 @@ var _ = Describe("Config", func() {
 			ImageMinimumGCAge:                metav1.Duration{Duration: 2 * time.Minute},
 			KubeAPIBurst:                     50,
 			KubeAPIQPS:                       pointer.Int32Ptr(50),
-			KubeReserved:                     utils.MergeStringMaps(params.KubeReserved, map[string]string{"memory": "1Gi"}),
+			KubeReserved:                     utils.MergeStringMaps(params.KubeReserved,
+												map[string]string{"memory": "1Gi", "pid": "2048"}),
 			MaxOpenFiles:                     1000000,
 			MaxPods:                          *params.MaxPods,
 			NodeStatusUpdateFrequency:        metav1.Duration{Duration: 10 * time.Second},
@@ -230,21 +195,119 @@ var _ = Describe("Config", func() {
 		}
 	)
 
+	fiftyGi := resource.MustParse("50Gi")
+	twentyGi := resource.MustParse("20Gi")
+
 	DescribeTable("#Config",
-		func(kubernetesVersion string, clusterDNSAddress, clusterDomain string, params components.ConfigurableKubeletConfigParameters, expectedConfig *kubeletconfigv1beta1.KubeletConfiguration, mutateExpectConfigFn func(*kubeletconfigv1beta1.KubeletConfiguration)) {
+		func(kubernetesVersion string, clusterDNSAddress, clusterDomain string, machineType *gardencorev1beta1.MachineType, volume *gardencorev1beta1.Volume,params components.ConfigurableKubeletConfigParameters, expectedConfig *kubeletconfigv1beta1.KubeletConfiguration, mutateExpectConfigFn func(*kubeletconfigv1beta1.KubeletConfiguration)) {
 			expectation := expectedConfig.DeepCopy()
 			if mutateExpectConfigFn != nil {
 				mutateExpectConfigFn(expectation)
 			}
 
-			Expect(kubelet.Config(semver.MustParse(kubernetesVersion), clusterDNSAddress, clusterDomain, params)).To(Equal(expectation))
+			Expect(kubelet.Config(semver.MustParse(kubernetesVersion), clusterDNSAddress, clusterDomain, machineType, volume, params)).To(Equal(expectation))
 		},
 
+		Entry(
+			"kube-reserved based on the machine type - root disk size from volume",
+			"1.15.1",
+			clusterDNSAddress,
+			clusterDomain,
+			&gardencorev1beta1.MachineType{
+				CPU:     resource.MustParse("64"),
+				Memory:  resource.MustParse("128Gi"),
+			},
+			&gardencorev1beta1.Volume{
+				VolumeSize: "50Gi",
+			},
+			components.ConfigurableKubeletConfigParameters{},
+			kubeletConfigWithDefaults,
+			func(cfg *kubeletconfigv1beta1.KubeletConfiguration) {
+				cfg.RotateCertificates = true
+				cfg.KubeReserved = map[string]string{
+				"memory": "9543Mi",
+				"pid": "2048",
+				"ephemeral-storage": "24064Mi",
+				"cpu":    "230m",
+			} },
+		),
+		Entry(
+			"kube-reserved based on the machine type - no root disk size given",
+			"1.15.1",
+			clusterDNSAddress,
+			clusterDomain,
+			&gardencorev1beta1.MachineType{
+				CPU:     resource.MustParse("64"),
+				Memory:  resource.MustParse("128Gi"),
+			},
+			nil,
+			components.ConfigurableKubeletConfigParameters{},
+			kubeletConfigWithDefaults,
+			func(cfg *kubeletconfigv1beta1.KubeletConfiguration) {
+				cfg.RotateCertificates = true
+				cfg.KubeReserved = map[string]string{
+					"memory": "9543Mi",
+					"pid": "2048",
+					"cpu":    "230m",
+				} },
+		),
+		Entry(
+			"kube-reserved based on the machine type - root disk size from machine type",
+			"1.15.1",
+			clusterDNSAddress,
+			clusterDomain,
+			&gardencorev1beta1.MachineType{
+				CPU:     resource.MustParse("64"),
+				Memory:  resource.MustParse("128Gi"),
+				Storage: &gardencorev1beta1.MachineTypeStorage{
+					StorageSize: &fiftyGi,
+				},
+			},
+			nil,
+			components.ConfigurableKubeletConfigParameters{},
+			kubeletConfigWithDefaults,
+			func(cfg *kubeletconfigv1beta1.KubeletConfiguration) {
+				cfg.RotateCertificates = true
+				cfg.KubeReserved = map[string]string{
+					"memory": "9543Mi",
+					"pid": "2048",
+					"ephemeral-storage": "24064Mi",
+					"cpu":    "230m",
+				} },
+		),
+		Entry(
+			"kube-reserved based on the machine type - root disk size from worker volume overwrites the disk size from the machine type",
+			"1.15.1",
+			clusterDNSAddress,
+			clusterDomain,
+			&gardencorev1beta1.MachineType{
+				CPU:     resource.MustParse("64"),
+				Memory:  resource.MustParse("128Gi"),
+				Storage: &gardencorev1beta1.MachineTypeStorage{
+					StorageSize: &twentyGi,
+				},
+			},
+			&gardencorev1beta1.Volume{
+				VolumeSize: "50Gi",
+			},
+			components.ConfigurableKubeletConfigParameters{},
+			kubeletConfigWithDefaults,
+			func(cfg *kubeletconfigv1beta1.KubeletConfiguration) {
+				cfg.RotateCertificates = true
+				cfg.KubeReserved = map[string]string{
+					"memory": "9543Mi",
+					"pid": "2048",
+					"ephemeral-storage": "24064Mi",
+					"cpu":    "230m",
+				} },
+		),
 		Entry(
 			"kubernetes 1.15 w/o defaults",
 			"1.15.1",
 			clusterDNSAddress,
 			clusterDomain,
+			nil,
+			nil,
 			components.ConfigurableKubeletConfigParameters{},
 			kubeletConfigWithDefaults,
 			func(cfg *kubeletconfigv1beta1.KubeletConfiguration) { cfg.RotateCertificates = true },
@@ -254,6 +317,8 @@ var _ = Describe("Config", func() {
 			"1.15.1",
 			clusterDNSAddress,
 			clusterDomain,
+			nil,
+			nil,
 			params,
 			kubeletConfigWithParams,
 			func(cfg *kubeletconfigv1beta1.KubeletConfiguration) { cfg.RotateCertificates = true },
@@ -264,6 +329,8 @@ var _ = Describe("Config", func() {
 			"1.16.1",
 			clusterDNSAddress,
 			clusterDomain,
+			nil,
+			nil,
 			components.ConfigurableKubeletConfigParameters{},
 			kubeletConfigWithDefaults,
 			func(cfg *kubeletconfigv1beta1.KubeletConfiguration) { cfg.RotateCertificates = true },
@@ -273,6 +340,8 @@ var _ = Describe("Config", func() {
 			"1.16.1",
 			clusterDNSAddress,
 			clusterDomain,
+			nil,
+			nil,
 			params,
 			kubeletConfigWithParams,
 			func(cfg *kubeletconfigv1beta1.KubeletConfiguration) { cfg.RotateCertificates = true },
@@ -283,6 +352,8 @@ var _ = Describe("Config", func() {
 			"1.17.1",
 			clusterDNSAddress,
 			clusterDomain,
+			nil,
+			nil,
 			components.ConfigurableKubeletConfigParameters{},
 			kubeletConfigWithDefaults,
 			func(cfg *kubeletconfigv1beta1.KubeletConfiguration) { cfg.RotateCertificates = true },
@@ -292,6 +363,8 @@ var _ = Describe("Config", func() {
 			"1.17.1",
 			clusterDNSAddress,
 			clusterDomain,
+			nil,
+			nil,
 			params,
 			kubeletConfigWithParams,
 			func(cfg *kubeletconfigv1beta1.KubeletConfiguration) { cfg.RotateCertificates = true },
@@ -302,6 +375,8 @@ var _ = Describe("Config", func() {
 			"1.18.1",
 			clusterDNSAddress,
 			clusterDomain,
+			nil,
+			nil,
 			components.ConfigurableKubeletConfigParameters{},
 			kubeletConfigWithDefaults,
 			func(cfg *kubeletconfigv1beta1.KubeletConfiguration) { cfg.RotateCertificates = true },
@@ -311,6 +386,8 @@ var _ = Describe("Config", func() {
 			"1.18.1",
 			clusterDNSAddress,
 			clusterDomain,
+			nil,
+			nil,
 			params,
 			kubeletConfigWithParams,
 			func(cfg *kubeletconfigv1beta1.KubeletConfiguration) { cfg.RotateCertificates = true },
@@ -321,6 +398,8 @@ var _ = Describe("Config", func() {
 			"1.19.1",
 			clusterDNSAddress,
 			clusterDomain,
+			nil,
+			nil,
 			components.ConfigurableKubeletConfigParameters{},
 			kubeletConfigWithDefaults,
 			func(cfg *kubeletconfigv1beta1.KubeletConfiguration) {
@@ -333,6 +412,8 @@ var _ = Describe("Config", func() {
 			"1.19.1",
 			clusterDNSAddress,
 			clusterDomain,
+			nil,
+			nil,
 			params,
 			kubeletConfigWithParams,
 			func(cfg *kubeletconfigv1beta1.KubeletConfiguration) {
@@ -346,6 +427,8 @@ var _ = Describe("Config", func() {
 			"1.20.1",
 			clusterDNSAddress,
 			clusterDomain,
+			nil,
+			nil,
 			components.ConfigurableKubeletConfigParameters{},
 			kubeletConfigWithDefaults,
 			func(cfg *kubeletconfigv1beta1.KubeletConfiguration) {
@@ -358,12 +441,302 @@ var _ = Describe("Config", func() {
 			"1.20.1",
 			clusterDNSAddress,
 			clusterDomain,
+			nil,
+			nil,
 			params,
 			kubeletConfigWithParams,
 			func(cfg *kubeletconfigv1beta1.KubeletConfiguration) {
 				cfg.RotateCertificates = true
 				cfg.VolumePluginDir = "/var/lib/kubelet/volumeplugins"
 			},
+		),
+	)
+
+	DescribeTable("#CalculateReservedEphemeralStorage",
+		func(value, expected string) {
+			res := resource.MustParse(value)
+			result := kubelet.CalculateReservedEphemeralStorage(res)
+			Expect(result).To(Equal(expected))
+		},
+		Entry(
+			"should reserve 50% * BOOT-DISK-CAPACITY",
+			"20Gi",
+			"10Gi",
+		),
+		Entry(
+			"should reserve 6Gi + 35% * BOOT-DISK-CAPACITY",
+			"50Gi",
+			// 35% of 50Gi = 17920Mi
+			// 6Gi = 6144Mi
+			"24064Mi",
+		),
+		Entry(
+			"should reserve 100Gi",
+			"1000Gi",
+			"100Gi",
+		),
+	)
+
+
+	DescribeTable("#CalculateReservedCPU",
+		func(value, expected string) {
+			res := resource.MustParse(value)
+			result := kubelet.CalculateReservedCPU(res)
+			Expect(result).To(Equal(expected))
+		},
+		Entry(
+			"should reserve 6% of the first core - full cores",
+			"1",
+			"60m",
+		),
+		Entry(
+			"should reserve 6% of the first core - fractional",
+			"0.5",
+			"30m",
+		),
+		Entry(
+			"should reserve 6% of the first core - high precision",
+			"0.5532",
+			"33m",
+		),
+		Entry(
+			"should reserve 6% of the first core - millicpu",
+			"800m",
+			"48m",
+		),
+		Entry(
+			"should reserve 1% of the next core (up to 2 cores) - full cores",
+			"2",
+			"70m",
+		),
+		Entry(
+			"should reserve 1% of the next core (up to 2 cores) - fractional",
+			"1.5",
+			"65m",
+		),
+		Entry(
+			"should reserve 1% of the next core (up to 2 cores) - high precision",
+			"1.614",
+			"66m",
+		),
+		Entry(
+			"should reserve 1% of the next core (up to 2 cores) - millicpu",
+			"1800m",
+			"68m",
+		),
+		Entry(
+			"should reserve 0.5% of the next 2 cores (up to 4 cores) - full cores",
+			"4",
+			"80m",
+		),
+		Entry(
+			"should reserve 0.5% of the next 2 cores (up to 4 cores) - fractional",
+			"3.5",
+			"77m",
+		),
+		Entry(
+			"should reserve 0.5% of the next 2 cores (up to 4 cores) - high precision",
+			"3.614",
+			"78m",
+		),
+		Entry(
+			"should reserve 0.5% of the next 2 cores (up to 4 cores) - millicpu",
+			"3900m",
+			"79m",
+		),
+		// 0.25% of any cores above 4 core
+		Entry(
+			"should reserve 0.25% of any cores above 4 core - full cores (8)",
+			"8",
+			// 60m + (1000m * 0.01) + (2000m * 0.005)  + (4000m * 0.0025)
+			// 60m + 10m + 10m + 10 m = 90m
+			"90m",
+		),
+		Entry(
+			"should reserve 0.25% of any cores above 4 core - full cores (32)",
+			"32",
+			"150m",
+		),
+		Entry(
+			"should reserve 0.25% of any cores above 4 core - full cores (64)",
+			"64",
+			// 60m + (1000m * 0.01) + (2000m * 0.005)  + (60000m * 0.0025)
+			// 60m + 10m + 10m + 150 m = 230m
+			"230m",
+		),
+		Entry(
+			"should reserve 0.25% of any cores above 4 core - fractional",
+			"60.5",
+			"221m",
+		),
+		Entry(
+			"should reserve 0.25% of any cores above 4 core - high precision",
+			"8.614",
+			"91m",
+		),
+		Entry(
+			"should reserve 0.25% of any cores above 4 core - millicpu",
+			"16900m",
+			"112m",
+		),
+		Entry(
+			"should reserve 0.25% of any cores above 4 core - high cores",
+			"1000",
+			"2570m",
+		),
+		)
+
+
+	// 1 Mi = 1048576 bytes (megabinary): 2 to the power of 20
+	// 1 M = 1000000 bytes (megabyte): 10 to the power of 6
+	DescribeTable("#CalculateReservedMemory",
+		func(value, expected string) {
+			res := resource.MustParse(value)
+			result := kubelet.CalculateReservedMemory(res)
+			Expect(result).To(Equal(expected))
+		},
+		Entry(
+			"should reserve 255 MiB of memory for machines with less than 1 GiB of memory - BinarySI",
+			"500Mi",
+			"255Mi",
+		),
+		Entry(
+			"should reserve 255 MiB of memory for machines with less than 1 GiB of memory - BinarySI (1Gi)",
+			"1Gi",
+			"255Mi",
+		),
+		Entry(
+			"should reserve 255 MiB of memory for machines with less than 1 GiB of memory - DecimalSI",
+			"1G",
+			"255Mi",
+		),
+		Entry(
+			"should reserve 255 MiB of memory for machines with less than 1 GiB of memory - DecimalExponent",
+			"500e6",
+			"255Mi",
+		),
+		Entry(
+			"should reserve 25% of the first 4 GiB of memory - BinarySI (4 Gi)",
+			"4Gi",
+			"1Gi",
+		),
+		Entry(
+			"should reserve 25% of the first 4 GiB of memory - BinarySI (2 Gi)",
+			"2Gi",
+			"512Mi",
+		),
+		Entry(
+			"should reserve 25% of the first 4 GiB of memory - DecimalSI",
+			"2G",
+			"500M",
+		),
+		Entry(
+			"should reserve 25% of the first 4 GiB of memory - BinarySI - should round to full Mebibyte",
+			"1481Mi",
+			"370Mi",
+		),
+		Entry(
+			"should reserve 25% of the first 4 GiB of memory - DecimalSI - should round to full Megabytes",
+			"1481M",
+			"370M",
+		),
+		Entry(
+			"should reserve 25% of the first 4 GiB of memory - Decimal exponential",
+			"2e9",
+			"500e6",
+		),
+		Entry(
+			"should reserve 20% of the next 4 GiB of memory (up to 8 GiB) - BinarySI",
+			"8Gi",
+			// 25 % of 4 Gi = 1024 Mi
+			// 20 % of 4 Gi = 819.2 Mi
+			"1843Mi",
+		),
+		Entry(
+			"should reserve 20% of the next 4 GiB of memory (up to 8 GiB) - DecimalSI",
+			"8G",
+			// First 4 Gi = 4294.97 M
+			// 25 % of 4 Gi = 1024 Mi = 1073.74 M
+			// 8 GB - 4 Gi are left = 3705 M
+			// 20 % of 3705 M = 741 M
+			// Total: 1073.74 M + 741 M = 1814.7 M
+			"1814M",
+		),
+		Entry(
+			"should reserve 20% of the next 4 GiB of memory (up to 8 GiB) - Decimal exponential",
+			"8e9",
+			"1814e6",
+		),
+		Entry(
+			"should reserve 10% of the next 8 GiB of memory (up to 16 GiB) - BinarySI",
+			"16Gi",
+			// 25 % of 4 Gi = 1024 Mi
+			// 20 % of 4 Gi = 819.2 Mi
+			// 10% of 8 Gi = 819 Mi
+			"2662Mi",
+		),
+		Entry(
+			"should reserve 10% of the next 8 GiB of memory (up to 16 GiB) - BinarySI (1350Mi)",
+			"14200Mi",
+			// 25 % of 4 Gi = 1024 Mi
+			// 20 % of 4 Gi = 819.2 Mi
+			// remaining: 14200Mi - 8192Mi = 6008 Mi
+			// 10% of 6008 Mi = 600.8 Mi
+			"2444Mi",
+		),
+		Entry(
+			"should reserve 10% of the next 8 GiB of memory (up to 16 GiB) - DecimalSI",
+			"16G",
+			// 25 % of 4 Gi = 1024 Mi = 1073.74 M
+			// 20 % of 4 Gi = 819.2 Mi = 859 M
+			// 16 Gb - 8 Gi (8590 M) = 7410 M left
+			// 10% of 7410 M = 741 M
+			"2673M",
+		),
+		Entry(
+			"should reserve 10% of the next 8 GiB of memory (up to 16 GiB) - Decimal exponential",
+			"16e9",
+			"2673e6",
+		),
+		Entry(
+			"should reserve 6% of the next 112 GiB of memory (up to 128 GiB) - BinarySI",
+			"128Gi",
+			// 25 % of 4 Gi = 1024 Mi
+			// 20 % of 4 Gi = 819.2 Mi
+			// 10% of 8 Gi = 819 Mi
+			// 6% of 112 Gi = 6881 Mi
+			"9543Mi",
+		),
+		Entry(
+			"should reserve 6% of the next 112 GiB of memory (up to 128 GiB) - DecimalSI",
+			"128G",
+			"9440M",
+		),
+		Entry(
+			"should reserve 6% of the next 112 GiB of memory (up to 128 GiB) - Decimal exponential",
+			"128e9",
+			"9440e6",
+		),
+		Entry(
+			"2% of any memory above 128 GiB - BinarySI",
+			"512Gi",
+			// 25 % of 4 Gi = 1024 Mi
+			// 20 % of 4 Gi = 819.2 Mi
+			// 10% of 8 Gi = 819 Mi
+			// 6% of 112 Gi = 6881 Mi
+			// 2% of remaining 384Gi (393216 Mi) = 7864Mi
+			// Total: 17407 == 17 Gi
+			"17Gi",
+		),
+		Entry(
+			"2% of any memory above 128 GiB - DecimalSI",
+			"512G",
+			"17498M",
+		),
+		Entry(
+			"2% of any memory above 128 GiB - Decimal exponential",
+			"512e9",
+			"17498e6",
 		),
 	)
 })

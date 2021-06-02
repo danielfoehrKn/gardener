@@ -22,6 +22,7 @@ import (
 
 	"github.com/Masterminds/semver"
 	"github.com/Masterminds/sprig"
+	gardencorev1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/utils/pointer"
 
@@ -95,7 +96,7 @@ func (component) Config(ctx components.Context) ([]extensionsv1alpha1.Unit, []ex
 		return nil, nil, err
 	}
 
-	fileContentKubeletConfig, err := getFileContentKubeletConfig(ctx.KubernetesVersion, ctx.ClusterDNSAddress, ctx.ClusterDomain, ctx.KubeletConfigParameters)
+	fileContentKubeletConfig, err := getFileContentKubeletConfig(ctx.KubernetesVersion, ctx.ClusterDNSAddress, ctx.ClusterDomain, ctx.MachineType, ctx.RootVolume, ctx.KubeletConfigParameters)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -170,12 +171,16 @@ ExecStart=` + pathHealthMonitor),
 		nil
 }
 
-func getFileContentKubeletConfig(kubernetesVersion *semver.Version, clusterDNSAddress, clusterDomain string, params components.ConfigurableKubeletConfigParameters) (*extensionsv1alpha1.FileContentInline, error) {
+func getFileContentKubeletConfig(kubernetesVersion *semver.Version, clusterDNSAddress, clusterDomain string, machineType *gardencorev1beta1.MachineType, rootVolume *gardencorev1beta1.Volume, params components.ConfigurableKubeletConfigParameters) (*extensionsv1alpha1.FileContentInline, error) {
 	var (
-		kubeletConfig = Config(kubernetesVersion, clusterDNSAddress, clusterDomain, params)
 		configFCI     = &extensionsv1alpha1.FileContentInline{Encoding: "b64"}
 		kcCodec       = NewConfigCodec(oscutils.NewFileContentInlineCodec())
 	)
+
+	kubeletConfig, err := Config(kubernetesVersion, clusterDNSAddress, clusterDomain, machineType, rootVolume, params)
+	if err != nil {
+		return nil, err
+	}
 
 	return kcCodec.Encode(kubeletConfig, configFCI.Encoding)
 }

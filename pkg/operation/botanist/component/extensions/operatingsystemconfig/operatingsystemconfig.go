@@ -399,13 +399,31 @@ func (o *operatingSystemConfig) newDeployer(osc *extensionsv1alpha1.OperatingSys
 		}
 	}
 
+	// global kubelet configuration
 	kubeletConfigParameters := o.values.KubeletConfigParameters
 	kubeletCLIFlags := o.values.KubeletCLIFlags
+
+	// if configured, use the worker-specific kubelet configuration
 	if worker.Kubernetes != nil && worker.Kubernetes.Kubelet != nil {
 		kubeletConfigParameters = components.KubeletConfigParametersFromCoreV1beta1KubeletConfig(worker.Kubernetes.Kubelet)
 		kubeletCLIFlags = components.KubeletCLIFlagsFromCoreV1beta1KubeletConfig(worker.Kubernetes.Kubelet)
 	}
+
+	// TODO: There are defaults in
+	// - the API defaults for kubelet.kube-reserved
+			// kubeReservedMemory = resource.MustParse("1Gi")
+			// kubeReservedCPU    = resource.MustParse("80m")
+			// kubeReservedPID    = resource.MustParse("20k")
+	// - the eviction soft & hard defaults based on the machine type of the worker (below in operatingssystemconfig.go)
+	// - Machine & worker independent defaults for all eviction settings and kube-reserved in the component config of the kubelet
+	//    in pkg/operation/botanist/component/extensions/operatingsystemconfig/original/components/kubelet/config.go
+	//  ---> no system-reserved kubelet config (like in GKE)
+
+	// if not already configured in either the global or worker kubelet settings: sets default value for kubelet's eviction hard and soft `memory available` configuration
+	// based on the worker's machine type
 	setDefaultEvictionMemoryAvailable(kubeletConfigParameters.EvictionHard, kubeletConfigParameters.EvictionSoft, o.values.MachineTypes, worker.Machine.Type)
+
+	machineType := getMachineTypeForWorker(o.values.MachineTypes, worker.Machine.Type)
 
 	return deployer{
 		client:                  o.client,
@@ -421,6 +439,8 @@ func (o *operatingSystemConfig) newDeployer(osc *extensionsv1alpha1.OperatingSys
 		images:                  o.values.Images,
 		kubeletCACertificate:    o.values.KubeletCACertificate,
 		kubeletConfigParameters: kubeletConfigParameters,
+		machineType: 			 machineType,
+		rootVolume: 			 worker.Volume,
 		kubeletCLIFlags:         kubeletCLIFlags,
 		kubeletDataVolumeName:   worker.KubeletDataVolumeName,
 		kubernetesVersion:       o.values.KubernetesVersion,
@@ -428,9 +448,24 @@ func (o *operatingSystemConfig) newDeployer(osc *extensionsv1alpha1.OperatingSys
 	}
 }
 
-func setDefaultEvictionMemoryAvailable(evictionHard, evictionSoft map[string]string, machineTypes []gardencorev1beta1.MachineType, machineType string) {
-	evictionHardMemoryAvailable, evictionSoftMemoryAvailable := "100Mi", "200Mi"
+func getMachineTypeForWorker(typesFromCloudProfile []gardencorev1beta1.MachineType, machineType string) *gardencorev1beta1.MachineType {
+	for _, machtype := range typesFromCloudProfile {
+		if machtype.Name == machineType {
+			return &machtype
+		}
+	}
 
+	// machine type not found: currently it is possible to delete a machine type from the cloud profile
+	// that is in use by Shoots
+	return nil
+}
+
+func setDefaultEvictionMemoryAvailable(evictionHard, evictionSoft map[string]string, machineTypes []gardencorev1beta1.MachineType, machineType string) {
+	// define default eviction soft and hard values based on the machine type
+	// TODO: I do not get that. The machine type for the worker ALWAYS has to be available in the CloudProfile
+	// so should always be overwritten
+	evictionHardMemoryAvailable, evictionSoftMemoryAvailable := "100Mi", "200Mi"
+	// machineTypes is from the CloudProfile associated with the Shoot
 	for _, machtype := range machineTypes {
 		if machtype.Name == machineType {
 			evictionHardMemoryAvailable, evictionSoftMemoryAvailable = "5%", "10%"
@@ -477,6 +512,8 @@ type deployer struct {
 	images                  map[string]*imagevector.Image
 	kubeletCACertificate    string
 	kubeletConfigParameters components.ConfigurableKubeletConfigParameters
+	machineType			*gardencorev1beta1.MachineType
+	rootVolume			*gardencorev1beta1.Volume
 	kubeletCLIFlags         components.ConfigurableKubeletCLIFlags
 	kubeletDataVolumeName   *string
 	kubernetesVersion       *semver.Version
@@ -487,7 +524,7 @@ type deployer struct {
 var (
 	// DownloaderConfigFn is a function for computing the cloud config downloader units and files.
 	DownloaderConfigFn = downloader.Config
-	// OriginalConfigFn is a function for computing the downloaded cloud config user data units and files.
+	// OriginalConfigFn is a function for computing the downloaded (original) cloud config user data units and files.
 	OriginalConfigFn = original.Config
 )
 
@@ -514,6 +551,7 @@ func (d *deployer) deploy(ctx context.Context, operation string) (extensionsv1al
 		units, files = downloaderUnits, downloaderFiles
 
 	case extensionsv1alpha1.OperatingSystemConfigPurposeReconcile:
+		// compute the units and files (original) for the OSC.Spec
 		units, files, err = OriginalConfigFn(components.Context{
 			CABundle:                d.caBundle,
 			ClusterDNSAddress:       d.clusterDNSAddress,
@@ -522,6 +560,8 @@ func (d *deployer) deploy(ctx context.Context, operation string) (extensionsv1al
 			Images:                  d.images,
 			KubeletCACertificate:    d.kubeletCACertificate,
 			KubeletConfigParameters: d.kubeletConfigParameters,
+			MachineType: d.machineType,
+			RootVolume: d.rootVolume,
 			KubeletCLIFlags:         d.kubeletCLIFlags,
 			KubeletDataVolumeName:   d.kubeletDataVolumeName,
 			KubernetesVersion:       d.kubernetesVersion,

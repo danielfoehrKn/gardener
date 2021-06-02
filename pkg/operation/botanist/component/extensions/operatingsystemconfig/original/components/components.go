@@ -15,6 +15,7 @@
 package components
 
 import (
+	gardencorev1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1"
 	extensionsv1alpha1 "github.com/gardener/gardener/pkg/apis/extensions/v1alpha1"
 	"github.com/gardener/gardener/pkg/utils/imagevector"
 
@@ -39,6 +40,12 @@ type Context struct {
 	KubeletCACertificate    string
 	KubeletCLIFlags         ConfigurableKubeletCLIFlags
 	KubeletConfigParameters ConfigurableKubeletConfigParameters
+	// Machine type of the worker pool.
+	// Used to calculate default kubelet resource reservations
+	MachineType 			*gardencorev1beta1.MachineType
+	// Root volume of the worker pool.
+	// if provided, used to calculate default ephemeral-storage kubelet resource reservations
+	RootVolume 				*gardencorev1beta1.Volume
 	KubeletDataVolumeName   *string
 	KubernetesVersion       *semver.Version
 	SSHPublicKey            string

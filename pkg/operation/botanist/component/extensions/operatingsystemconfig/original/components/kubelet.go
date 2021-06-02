@@ -66,6 +66,8 @@ const (
 	NodeFSAvailable = "nodefs.available"
 	// NodeFSInodesFree is a constant for the 'nodefs.inodesFree' eviction setting.
 	NodeFSInodesFree = "nodefs.inodesFree"
+	// PIDAvailable is a constant for the 'pid.available' eviction setting.
+	PIDAvailable = "pid.available"
 )
 
 // KubeletConfigParametersFromCoreV1beta1KubeletConfig computes the ConfigurableKubeletConfigParameters based on the provided
@@ -75,6 +77,8 @@ func KubeletConfigParametersFromCoreV1beta1KubeletConfig(kubeletConfig *gardenco
 
 	if kubeletConfig != nil {
 		out.CpuCFSQuota = kubeletConfig.CPUCFSQuota
+		// Does this not require the CPU Manager flag to be activated on the node?
+		// does this even work
 		out.CpuManagerPolicy = kubeletConfig.CPUManagerPolicy
 		out.EvictionMaxPodGracePeriod = kubeletConfig.EvictionMaxPodGracePeriod
 		out.EvictionPressureTransitionPeriod = kubeletConfig.EvictionPressureTransitionPeriod

@@ -42,7 +42,7 @@ var _ = Describe("Component", func() {
 		ctx = components.Context{}
 	})
 
-	DescribeTable("#Config",
+	DescribeTable("#Component-Test Config",
 		func(kubernetesVersion string, criName extensionsv1alpha1.CRIName, execStartPreFn func(string) string, kubeletFlags, kubeletConfig string) {
 			ctx.CRIName = criName
 			ctx.KubernetesVersion = semver.MustParse(kubernetesVersion)
@@ -453,31 +453,14 @@ enforceNodeAllocatable:
 eventBurst: 50
 eventRecordQPS: 50
 evictionHard:
-  imagefs.available: 5%
+  imagefs.available: 15%
   imagefs.inodesFree: 5%
   memory.available: 100Mi
-  nodefs.available: 5%
-  nodefs.inodesFree: 5%
-evictionMaxPodGracePeriod: 90
-evictionMinimumReclaim:
-  imagefs.available: 0Mi
-  imagefs.inodesFree: 0Mi
-  memory.available: 0Mi
-  nodefs.available: 0Mi
-  nodefs.inodesFree: 0Mi
-evictionPressureTransitionPeriod: 4m0s
-evictionSoft:
-  imagefs.available: 10%
-  imagefs.inodesFree: 10%
-  memory.available: 200Mi
   nodefs.available: 10%
-  nodefs.inodesFree: 10%
-evictionSoftGracePeriod:
-  imagefs.available: 1m30s
-  imagefs.inodesFree: 1m30s
-  memory.available: 1m30s
-  nodefs.available: 1m30s
-  nodefs.inodesFree: 1m30s
+  nodefs.inodesFree: 5%
+  pid.available: 10%
+evictionMaxPodGracePeriod: 90
+evictionPressureTransitionPeriod: 4m0s
 failSwapOn: true
 fileCheckFrequency: 20s
 hairpinMode: promiscuous-bridge
@@ -491,6 +474,7 @@ kubeAPIQPS: 50
 kubeReserved:
   cpu: 80m
   memory: 1Gi
+  pid: "2048"
 logging: {}
 maxOpenFiles: 1000000
 maxPods: 110
