@@ -25,7 +25,6 @@ import (
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
 	rbacv1 "k8s.io/api/rbac/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/pointer"
 )
@@ -352,44 +351,6 @@ var _ = Describe("Defaults", func() {
 			SetDefaults_Shoot(obj)
 
 			Expect(obj.Spec.Kubernetes.KubeControllerManager.NodeMonitorGracePeriod).To(Equal(&metav1.Duration{Duration: 2 * time.Minute}))
-		})
-
-		Context("default kubeReserved", func() {
-			var (
-				defaultKubeReservedMemory = resource.MustParse("1Gi")
-				defaultKubeReservedCPU    = resource.MustParse("80m")
-				defaultKubeReservedPID    = resource.MustParse("20k")
-				kubeReservedMemory        = resource.MustParse("2Gi")
-				kubeReservedCPU           = resource.MustParse("20m")
-				kubeReservedPID           = resource.MustParse("10k")
-			)
-
-			It("should default all fields", func() {
-				SetDefaults_Shoot(obj)
-
-				Expect(obj.Spec.Kubernetes.Kubelet.KubeReserved).To(PointTo(Equal(KubeletConfigReserved{
-					CPU:    &defaultKubeReservedCPU,
-					Memory: &defaultKubeReservedMemory,
-					PID:    &defaultKubeReservedPID,
-				})))
-			})
-
-			It("should not overwrite manually set kubeReserved", func() {
-				obj.Spec.Kubernetes.Kubelet = &KubeletConfig{
-					KubeReserved: &KubeletConfigReserved{
-						CPU:    &kubeReservedCPU,
-						Memory: &kubeReservedMemory,
-						PID:    &kubeReservedPID,
-					},
-				}
-				SetDefaults_Shoot(obj)
-
-				Expect(obj.Spec.Kubernetes.Kubelet.KubeReserved).To(PointTo(Equal(KubeletConfigReserved{
-					CPU:    &kubeReservedCPU,
-					Memory: &kubeReservedMemory,
-					PID:    &kubeReservedPID,
-				})))
-			})
 		})
 
 		It("should set the maintenance field", func() {

@@ -411,9 +411,9 @@ func (o *operatingSystemConfig) newDeployer(osc *extensionsv1alpha1.OperatingSys
 
 	// TODO: There are defaults in
 	// - the API defaults for kubelet.kube-reserved
-			// kubeReservedMemory = resource.MustParse("1Gi")
-			// kubeReservedCPU    = resource.MustParse("80m")
-			// kubeReservedPID    = resource.MustParse("20k")
+	// kubeReservedMemory = resource.MustParse("1Gi")
+	// kubeReservedCPU    = resource.MustParse("80m")
+	// kubeReservedPID    = resource.MustParse("20k")
 	// - the eviction soft & hard defaults based on the machine type of the worker (below in operatingssystemconfig.go)
 	// - Machine & worker independent defaults for all eviction settings and kube-reserved in the component config of the kubelet
 	//    in pkg/operation/botanist/component/extensions/operatingsystemconfig/original/components/kubelet/config.go
@@ -439,8 +439,8 @@ func (o *operatingSystemConfig) newDeployer(osc *extensionsv1alpha1.OperatingSys
 		images:                  o.values.Images,
 		kubeletCACertificate:    o.values.KubeletCACertificate,
 		kubeletConfigParameters: kubeletConfigParameters,
-		machineType: 			 machineType,
-		rootVolume: 			 worker.Volume,
+		machineType:             machineType,
+		rootVolume:              worker.Volume,
 		kubeletCLIFlags:         kubeletCLIFlags,
 		kubeletDataVolumeName:   worker.KubeletDataVolumeName,
 		kubernetesVersion:       o.values.KubernetesVersion,
@@ -512,8 +512,8 @@ type deployer struct {
 	images                  map[string]*imagevector.Image
 	kubeletCACertificate    string
 	kubeletConfigParameters components.ConfigurableKubeletConfigParameters
-	machineType			*gardencorev1beta1.MachineType
-	rootVolume			*gardencorev1beta1.Volume
+	machineType             *gardencorev1beta1.MachineType
+	rootVolume              *gardencorev1beta1.Volume
 	kubeletCLIFlags         components.ConfigurableKubeletCLIFlags
 	kubeletDataVolumeName   *string
 	kubernetesVersion       *semver.Version
@@ -560,8 +560,8 @@ func (d *deployer) deploy(ctx context.Context, operation string) (extensionsv1al
 			Images:                  d.images,
 			KubeletCACertificate:    d.kubeletCACertificate,
 			KubeletConfigParameters: d.kubeletConfigParameters,
-			MachineType: d.machineType,
-			RootVolume: d.rootVolume,
+			MachineType:             d.machineType,
+			RootVolume:              d.rootVolume,
 			KubeletCLIFlags:         d.kubeletCLIFlags,
 			KubeletDataVolumeName:   d.kubeletDataVolumeName,
 			KubernetesVersion:       d.kubernetesVersion,

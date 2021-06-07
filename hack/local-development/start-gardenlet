@@ -37,7 +37,7 @@ else
 
   KUBECONFIG="$kubeconfig" \
   GARDEN_KUBECONFIG="${GARDEN_KUBECONFIG:-$kubeconfig}" \
-  IMAGEVECTOR_OVERWRITE="$file_imagevector_overwrite" \
+  IMAGEVECTOR_OVERWRITE="/Users/d060239/go/src/github.com/gardener/gardener/dev/configFiles/gardenlet-local-image-vector-override.yaml" \
   GO111MODULE=on \
       go run \
         -mod=vendor \

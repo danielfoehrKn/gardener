@@ -42,11 +42,11 @@ type Context struct {
 	KubeletConfigParameters ConfigurableKubeletConfigParameters
 	// Machine type of the worker pool.
 	// Used to calculate default kubelet resource reservations
-	MachineType 			*gardencorev1beta1.MachineType
+	MachineType *gardencorev1beta1.MachineType
 	// Root volume of the worker pool.
 	// if provided, used to calculate default ephemeral-storage kubelet resource reservations
-	RootVolume 				*gardencorev1beta1.Volume
-	KubeletDataVolumeName   *string
-	KubernetesVersion       *semver.Version
-	SSHPublicKey            string
+	RootVolume            *gardencorev1beta1.Volume
+	KubeletDataVolumeName *string
+	KubernetesVersion     *semver.Version
+	SSHPublicKey          string
 }

@@ -206,30 +206,6 @@ func SetDefaults_Shoot(obj *Shoot) {
 		obj.Spec.Kubernetes.Kubelet.FailSwapOn = pointer.BoolPtr(true)
 	}
 
-	// var (
-		// TODO we should not have such global defaults (can be set by user though), instead calculate defaults
-		// for each worker pool based on the machine type
-	// 	kubeReservedMemory = resource.MustParse("1Gi")
-	// 	kubeReservedCPU    = resource.MustParse("80m")
-	// 	kubeReservedPID    = resource.MustParse("20k")
-	// )
-	//
-	// // This changes the global defaults (default if the worker does not also set KubeletConfig (no merge happens))
-	// if obj.Spec.Kubernetes.Kubelet.KubeReserved == nil {
-	// 	obj.Spec.Kubernetes.Kubelet.KubeReserved = &KubeletConfigReserved{Memory: &kubeReservedMemory, CPU: &kubeReservedCPU}
-	// 	obj.Spec.Kubernetes.Kubelet.KubeReserved.PID = &kubeReservedPID
-	// } else {
-	// 	if obj.Spec.Kubernetes.Kubelet.KubeReserved.Memory == nil {
-	// 		obj.Spec.Kubernetes.Kubelet.KubeReserved.Memory = &kubeReservedMemory
-	// 	}
-	// 	if obj.Spec.Kubernetes.Kubelet.KubeReserved.CPU == nil {
-	// 		obj.Spec.Kubernetes.Kubelet.KubeReserved.CPU = &kubeReservedCPU
-	// 	}
-	// 	if obj.Spec.Kubernetes.Kubelet.KubeReserved.PID == nil {
-	// 		obj.Spec.Kubernetes.Kubelet.KubeReserved.PID = &kubeReservedPID
-	// 	}
-	// }
-
 	if obj.Spec.Maintenance == nil {
 		obj.Spec.Maintenance = &Maintenance{}
 	}

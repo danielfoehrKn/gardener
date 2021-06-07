@@ -173,8 +173,8 @@ ExecStart=` + pathHealthMonitor),
 
 func getFileContentKubeletConfig(kubernetesVersion *semver.Version, clusterDNSAddress, clusterDomain string, machineType *gardencorev1beta1.MachineType, rootVolume *gardencorev1beta1.Volume, params components.ConfigurableKubeletConfigParameters) (*extensionsv1alpha1.FileContentInline, error) {
 	var (
-		configFCI     = &extensionsv1alpha1.FileContentInline{Encoding: "b64"}
-		kcCodec       = NewConfigCodec(oscutils.NewFileContentInlineCodec())
+		configFCI = &extensionsv1alpha1.FileContentInline{Encoding: "b64"}
+		kcCodec   = NewConfigCodec(oscutils.NewFileContentInlineCodec())
 	)
 
 	kubeletConfig, err := Config(kubernetesVersion, clusterDNSAddress, clusterDomain, machineType, rootVolume, params)

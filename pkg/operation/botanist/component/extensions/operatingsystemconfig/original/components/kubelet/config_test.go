@@ -90,7 +90,7 @@ var _ = Describe("Config", func() {
 				"imagefs.inodesFree": "5%",
 				"nodefs.available":   "10%",
 				"nodefs.inodesFree":  "5%",
-				"pid.available":  "10%",
+				"pid.available":      "10%",
 			},
 			EvictionPressureTransitionPeriod: metav1.Duration{Duration: 4 * time.Minute},
 			EvictionMaxPodGracePeriod:        90,
@@ -107,7 +107,7 @@ var _ = Describe("Config", func() {
 			KubeReserved: map[string]string{
 				"cpu":    "80m",
 				"memory": "1Gi",
-				"pid": "2048",
+				"pid":    "2048",
 			},
 			MaxOpenFiles:              1000000,
 			MaxPods:                   110,
@@ -162,7 +162,7 @@ var _ = Describe("Config", func() {
 				"imagefs.inodesFree": "5%",
 				"nodefs.available":   "10%",
 				"nodefs.inodesFree":  "5%",
-				"pid.available":  "10%",
+				"pid.available":      "10%",
 			}),
 			EvictionPressureTransitionPeriod: *params.EvictionPressureTransitionPeriod,
 			EvictionMaxPodGracePeriod:        *params.EvictionMaxPodGracePeriod,
@@ -176,22 +176,22 @@ var _ = Describe("Config", func() {
 			ImageMinimumGCAge:                metav1.Duration{Duration: 2 * time.Minute},
 			KubeAPIBurst:                     50,
 			KubeAPIQPS:                       pointer.Int32Ptr(50),
-			KubeReserved:                     utils.MergeStringMaps(params.KubeReserved,
-												map[string]string{"memory": "1Gi", "pid": "2048"}),
-			MaxOpenFiles:                     1000000,
-			MaxPods:                          *params.MaxPods,
-			NodeStatusUpdateFrequency:        metav1.Duration{Duration: 10 * time.Second},
-			PodsPerCore:                      0,
-			PodPidsLimit:                     params.PodPidsLimit,
-			ReadOnlyPort:                     0,
-			RegistryBurst:                    10,
-			RegistryPullQPS:                  pointer.Int32Ptr(5),
-			ResolverConfig:                   "/etc/resolv.conf",
-			RuntimeRequestTimeout:            metav1.Duration{Duration: 2 * time.Minute},
-			SerializeImagePulls:              pointer.BoolPtr(true),
-			SyncFrequency:                    metav1.Duration{Duration: time.Minute},
-			SystemReserved:                   params.SystemReserved,
-			VolumeStatsAggPeriod:             metav1.Duration{Duration: time.Minute},
+			KubeReserved: utils.MergeStringMaps(params.KubeReserved,
+				map[string]string{"memory": "1Gi", "pid": "2048"}),
+			MaxOpenFiles:              1000000,
+			MaxPods:                   *params.MaxPods,
+			NodeStatusUpdateFrequency: metav1.Duration{Duration: 10 * time.Second},
+			PodsPerCore:               0,
+			PodPidsLimit:              params.PodPidsLimit,
+			ReadOnlyPort:              0,
+			RegistryBurst:             10,
+			RegistryPullQPS:           pointer.Int32Ptr(5),
+			ResolverConfig:            "/etc/resolv.conf",
+			RuntimeRequestTimeout:     metav1.Duration{Duration: 2 * time.Minute},
+			SerializeImagePulls:       pointer.BoolPtr(true),
+			SyncFrequency:             metav1.Duration{Duration: time.Minute},
+			SystemReserved:            params.SystemReserved,
+			VolumeStatsAggPeriod:      metav1.Duration{Duration: time.Minute},
 		}
 	)
 
@@ -199,7 +199,7 @@ var _ = Describe("Config", func() {
 	twentyGi := resource.MustParse("20Gi")
 
 	DescribeTable("#Config",
-		func(kubernetesVersion string, clusterDNSAddress, clusterDomain string, machineType *gardencorev1beta1.MachineType, volume *gardencorev1beta1.Volume,params components.ConfigurableKubeletConfigParameters, expectedConfig *kubeletconfigv1beta1.KubeletConfiguration, mutateExpectConfigFn func(*kubeletconfigv1beta1.KubeletConfiguration)) {
+		func(kubernetesVersion string, clusterDNSAddress, clusterDomain string, machineType *gardencorev1beta1.MachineType, volume *gardencorev1beta1.Volume, params components.ConfigurableKubeletConfigParameters, expectedConfig *kubeletconfigv1beta1.KubeletConfiguration, mutateExpectConfigFn func(*kubeletconfigv1beta1.KubeletConfiguration)) {
 			expectation := expectedConfig.DeepCopy()
 			if mutateExpectConfigFn != nil {
 				mutateExpectConfigFn(expectation)
@@ -214,8 +214,8 @@ var _ = Describe("Config", func() {
 			clusterDNSAddress,
 			clusterDomain,
 			&gardencorev1beta1.MachineType{
-				CPU:     resource.MustParse("64"),
-				Memory:  resource.MustParse("128Gi"),
+				CPU:    resource.MustParse("64"),
+				Memory: resource.MustParse("128Gi"),
 			},
 			&gardencorev1beta1.Volume{
 				VolumeSize: "50Gi",
@@ -225,11 +225,12 @@ var _ = Describe("Config", func() {
 			func(cfg *kubeletconfigv1beta1.KubeletConfiguration) {
 				cfg.RotateCertificates = true
 				cfg.KubeReserved = map[string]string{
-				"memory": "9543Mi",
-				"pid": "2048",
-				"ephemeral-storage": "24064Mi",
-				"cpu":    "230m",
-			} },
+					"memory":            "9543Mi",
+					"pid":               "2048",
+					"ephemeral-storage": "24064Mi",
+					"cpu":               "230m",
+				}
+			},
 		),
 		Entry(
 			"kube-reserved based on the machine type - no root disk size given",
@@ -237,8 +238,8 @@ var _ = Describe("Config", func() {
 			clusterDNSAddress,
 			clusterDomain,
 			&gardencorev1beta1.MachineType{
-				CPU:     resource.MustParse("64"),
-				Memory:  resource.MustParse("128Gi"),
+				CPU:    resource.MustParse("64"),
+				Memory: resource.MustParse("128Gi"),
 			},
 			nil,
 			components.ConfigurableKubeletConfigParameters{},
@@ -247,9 +248,10 @@ var _ = Describe("Config", func() {
 				cfg.RotateCertificates = true
 				cfg.KubeReserved = map[string]string{
 					"memory": "9543Mi",
-					"pid": "2048",
+					"pid":    "2048",
 					"cpu":    "230m",
-				} },
+				}
+			},
 		),
 		Entry(
 			"kube-reserved based on the machine type - root disk size from machine type",
@@ -257,8 +259,8 @@ var _ = Describe("Config", func() {
 			clusterDNSAddress,
 			clusterDomain,
 			&gardencorev1beta1.MachineType{
-				CPU:     resource.MustParse("64"),
-				Memory:  resource.MustParse("128Gi"),
+				CPU:    resource.MustParse("64"),
+				Memory: resource.MustParse("128Gi"),
 				Storage: &gardencorev1beta1.MachineTypeStorage{
 					StorageSize: &fiftyGi,
 				},
@@ -269,11 +271,12 @@ var _ = Describe("Config", func() {
 			func(cfg *kubeletconfigv1beta1.KubeletConfiguration) {
 				cfg.RotateCertificates = true
 				cfg.KubeReserved = map[string]string{
-					"memory": "9543Mi",
-					"pid": "2048",
+					"memory":            "9543Mi",
+					"pid":               "2048",
 					"ephemeral-storage": "24064Mi",
-					"cpu":    "230m",
-				} },
+					"cpu":               "230m",
+				}
+			},
 		),
 		Entry(
 			"kube-reserved based on the machine type - root disk size from worker volume overwrites the disk size from the machine type",
@@ -281,8 +284,8 @@ var _ = Describe("Config", func() {
 			clusterDNSAddress,
 			clusterDomain,
 			&gardencorev1beta1.MachineType{
-				CPU:     resource.MustParse("64"),
-				Memory:  resource.MustParse("128Gi"),
+				CPU:    resource.MustParse("64"),
+				Memory: resource.MustParse("128Gi"),
 				Storage: &gardencorev1beta1.MachineTypeStorage{
 					StorageSize: &twentyGi,
 				},
@@ -295,11 +298,12 @@ var _ = Describe("Config", func() {
 			func(cfg *kubeletconfigv1beta1.KubeletConfiguration) {
 				cfg.RotateCertificates = true
 				cfg.KubeReserved = map[string]string{
-					"memory": "9543Mi",
-					"pid": "2048",
+					"memory":            "9543Mi",
+					"pid":               "2048",
 					"ephemeral-storage": "24064Mi",
-					"cpu":    "230m",
-				} },
+					"cpu":               "230m",
+				}
+			},
 		),
 		Entry(
 			"kubernetes 1.15 w/o defaults",
@@ -477,7 +481,6 @@ var _ = Describe("Config", func() {
 		),
 	)
 
-
 	DescribeTable("#CalculateReservedCPU",
 		func(value, expected string) {
 			res := resource.MustParse(value)
@@ -584,8 +587,7 @@ var _ = Describe("Config", func() {
 			"1000",
 			"2570m",
 		),
-		)
-
+	)
 
 	// 1 Mi = 1048576 bytes (megabinary): 2 to the power of 20
 	// 1 M = 1000000 bytes (megabyte): 10 to the power of 6

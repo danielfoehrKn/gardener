@@ -120,7 +120,7 @@ var (
 		components.ImageFSInodesFree: "5%",
 		components.NodeFSAvailable:   "10%",
 		components.NodeFSInodesFree:  "5%",
-		components.PIDAvailable:  "10%",
+		components.PIDAvailable:      "10%",
 	}
 )
 
@@ -133,7 +133,6 @@ var (
 //    - more simple configuration
 //    - more intelligent kube-reserved should lower the risk for processes outside the kubepods cgroup
 //     --> hopefully no need to have even earlier evictions
-
 
 func setConfigDefaults(machineType *gardencorev1beta1.MachineType, rootVolume *gardencorev1beta1.Volume, c *components.ConfigurableKubeletConfigParameters) error {
 	if c.KubeReserved == nil {
@@ -233,7 +232,7 @@ func calculateKubeReserved(machineType *gardencorev1beta1.MachineType, rootVolum
 
 var (
 	oneCore  = resource.MustParse("1")
-	twoCores  = resource.MustParse("2")
+	twoCores = resource.MustParse("2")
 )
 
 // Azure
@@ -286,26 +285,25 @@ func CalculateReservedCPU(cpu resource.Quantity) string {
 var (
 	oneGi                   = resource.MustParse("1Gi")
 	fourGi                  = resource.MustParse("4Gi")
-	eightGi                  = resource.MustParse("8Gi")
-	oneTwelveGi                  = resource.MustParse("112Gi")
+	eightGi                 = resource.MustParse("8Gi")
+	oneTwelveGi             = resource.MustParse("112Gi")
 	twentyFivePercentFourGi = float64(fourGi.Value()) * 0.25
-	twentyPercentFourGi = float64(fourGi.Value()) * 0.20
-	tenPercentEightGi = float64(eightGi.Value()) * 0.10
-	sixPercentOneTwelveGi = float64(oneTwelveGi.Value()) * 0.06
+	twentyPercentFourGi     = float64(fourGi.Value()) * 0.20
+	tenPercentEightGi       = float64(eightGi.Value()) * 0.10
+	sixPercentOneTwelveGi   = float64(oneTwelveGi.Value()) * 0.06
 )
 
 const (
-	KiB                 = 1024
-	Mebibyte            = KiB * 1024
-	KB                   = 1000
-	Megabyte             = KB * 1000
+	KiB      = 1024
+	Mebibyte = KiB * 1024
+	KB       = 1000
+	Megabyte = KB * 1000
 )
 
 // TODO: check against real memory consumption. CHECK ON RANDOM NODE FIRST, AND THEN SIMULATE 20,50,80,110 Pods
 // use this formula, but also take the maxPods into consideration for memory consumption!
 // check for how many pods those memory settings are reproducable on the node (and if they make even sense)
 // then check how much more the container runtime and the kublet consume for memory if there are more pods deployed
-
 
 // CalculateReservedMemory calculates a regressive rate of memory reservations
 // 255 MiB of memory for machines with less than 1 GiB of memory
@@ -384,7 +382,7 @@ func roundMemoryResource(v int64, format resource.Format) int64 {
 }
 
 var (
-	sixGi = resource.MustParse("6Gi")
+	sixGi        = resource.MustParse("6Gi")
 	oneHundredGi = resource.MustParse("100Gi")
 )
 
@@ -392,7 +390,7 @@ var (
 // Min(50% * BOOT-DISK-CAPACITY, 6Gi + 35% * BOOT-DISK-CAPACITY, 100 Gi)
 func CalculateReservedEphemeralStorage(bootDiskSize resource.Quantity) string {
 	halfBootDiskSize := float64(bootDiskSize.Value()) * 0.5
-	thirtyFivePercentBootDiskSize := float64(sixGi.Value()) + float64(bootDiskSize.Value()) * 0.35
+	thirtyFivePercentBootDiskSize := float64(sixGi.Value()) + float64(bootDiskSize.Value())*0.35
 	reserved := math.Min(math.Min(halfBootDiskSize, thirtyFivePercentBootDiskSize), float64(oneHundredGi.Value()))
 	roundedReserved := roundMemoryResource(int64(reserved), bootDiskSize.Format)
 	bootDiskSize.Set(roundedReserved)
